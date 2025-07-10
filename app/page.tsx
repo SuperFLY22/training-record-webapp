@@ -7,7 +7,6 @@ export default function Home() {
   const [mode, setMode] = useState(null);
   const [showAdminAuth, setShowAdminAuth] = useState(false);
   const [adminCode, setAdminCode] = useState('');
-  // const [authSuccess, setAuthSuccess] = useState(false); // 미사용 변수 제거
 
   const [instructorInfo, setInstructorInfo] = useState({ company: '', id: '', name: '' });
   const [traineeInfo, setTraineeInfo] = useState({ dept: '', id: '', name: '' });
@@ -16,8 +15,8 @@ export default function Home() {
 
   const instructorPad = useRef<SignaturePad | null>(null);
   const traineePad = useRef<SignaturePad | null>(null);
-  const instructorPad = useRef(null);
-  const traineePad = useRef(null);
+  const instructorSigRef = useRef<HTMLCanvasElement | null>(null);
+  const traineeSigRef = useRef<HTMLCanvasElement | null>(null);
 
   useEffect(() => {
     if (mode === 'instructor' && instructorSigRef.current) {
@@ -65,7 +64,6 @@ export default function Home() {
 
   const handleAuthSubmit = () => {
     if (adminCode === ADMIN_PASSWORD) {
-      // setAuthSuccess(true); // 미사용 변수 제거
       setMode('admin');
       setShowAdminAuth(false);
     } else {
