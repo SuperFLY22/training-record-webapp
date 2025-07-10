@@ -9,10 +9,13 @@
     "lint": "next lint"
   },
   "dependencies": {
+    "exceljs": "^4.4.0",
+    "file-saver": "^2.0.5",
     "next": "15.3.5",
     "react": "^19.0.0",
     "react-dom": "^19.0.0",
-    "signature_pad": "^5.0.10"
+    "signature_pad": "^5.0.10",
+    "xlsx": "^0.18.5"
   },
   "devDependencies": {
     "@eslint/eslintrc": "^3",

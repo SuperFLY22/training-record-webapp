@@ -2,6 +2,8 @@
 
 import { useState, useEffect, useRef } from 'react';
 import SignaturePad from 'signature_pad';
+import ExcelJS from 'exceljs';
+import { saveAs } from 'file-saver';
 
 export default function Home() {
   const [mode, setMode] = useState<null | string>(null);
@@ -71,6 +73,24 @@ export default function Home() {
     }
   };
 
+  const generateExcel = async () => {
+    const workbook = new ExcelJS.Workbook();
+    const sheet = workbook.addWorksheet('Training Record');
+
+    sheet.columns = [
+      { header: '구분', key: 'role', width: 10 },
+      { header: '소속/회사명', key: 'org', width: 20 },
+      { header: '사번', key: 'id', width: 15 },
+      { header: '이름', key: 'name', width: 15 },
+    ];
+
+    sheet.addRow({ role: '강사', org: instructorInfo.company, id: instructorInfo.id, name: instructorInfo.name });
+    sheet.addRow({ role: '수강자', org: traineeInfo.dept, id: traineeInfo.id, name: traineeInfo.name });
+
+    const blob = await workbook.xlsx.writeBuffer();
+    saveAs(new Blob([blob]), 'Training_Record.xlsx');
+  };
+
   const renderForm = () => {
     switch (mode) {
       case 'admin':
@@ -79,7 +99,7 @@ export default function Home() {
             <h2 className="text-xl font-bold mb-2">관리자 모드</h2>
             <input className="border p-2 w-full mb-2" placeholder="과목명" />
             <input className="border p-2 w-full mb-2" placeholder="교육 시간" />
-            <button className="bg-blue-500 text-white w-full py-2 rounded">과정 생성</button>
+            <button onClick={generateExcel} className="bg-blue-500 text-white w-full py-2 rounded">과정 생성</button>
           </div>
         );
       case 'instructor':
