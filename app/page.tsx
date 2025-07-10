@@ -7,7 +7,7 @@ export default function Home() {
   const [mode, setMode] = useState(null);
   const [showAdminAuth, setShowAdminAuth] = useState(false);
   const [adminCode, setAdminCode] = useState('');
-  const [authSuccess, setAuthSuccess] = useState(false);
+  // const [authSuccess, setAuthSuccess] = useState(false); // 미사용 변수 제거
 
   const [instructorInfo, setInstructorInfo] = useState({ company: '', id: '', name: '' });
   const [traineeInfo, setTraineeInfo] = useState({ dept: '', id: '', name: '' });
@@ -42,7 +42,7 @@ export default function Home() {
       }
     }
 
-    let pad = who === 'instructor' ? instructorPad.current : traineePad.current;
+    const pad = who === 'instructor' ? instructorPad.current : traineePad.current;
     if (pad && !pad.isEmpty()) {
       const dataURL = pad.toDataURL();
       console.log(`${who} 서명 이미지:`, dataURL);
@@ -53,7 +53,7 @@ export default function Home() {
   };
 
   const clearSignature = (who) => {
-    let pad = who === 'instructor' ? instructorPad.current : traineePad.current;
+    const pad = who === 'instructor' ? instructorPad.current : traineePad.current;
     if (pad) {
       pad.clear();
     }
@@ -65,7 +65,7 @@ export default function Home() {
 
   const handleAuthSubmit = () => {
     if (adminCode === ADMIN_PASSWORD) {
-      setAuthSuccess(true);
+      // setAuthSuccess(true); // 미사용 변수 제거
       setMode('admin');
       setShowAdminAuth(false);
     } else {
