@@ -4,7 +4,7 @@ import { useState, useEffect, useRef } from 'react';
 import SignaturePad from 'signature_pad';
 
 export default function Home() {
-  const [mode, setMode] = useState(null);
+  const [mode, setMode] = useState<null | string>(null);
   const [showAdminAuth, setShowAdminAuth] = useState(false);
   const [adminCode, setAdminCode] = useState('');
 
@@ -26,7 +26,7 @@ export default function Home() {
     }
   }, [mode]);
 
-  const saveSignature = (who) => {
+  const saveSignature = (who: 'instructor' | 'trainee') => {
     if (who === 'instructor') {
       const { company, id, name } = instructorInfo;
       if (!company || !id || !name) {
@@ -51,7 +51,7 @@ export default function Home() {
     }
   };
 
-  const clearSignature = (who) => {
+  const clearSignature = (who: 'instructor' | 'trainee') => {
     const pad = who === 'instructor' ? instructorPad.current : traineePad.current;
     if (pad) {
       pad.clear();
