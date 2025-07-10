@@ -14,8 +14,8 @@ export default function Home() {
 
   const ADMIN_PASSWORD = '1234';
 
-  const instructorSigRef = useRef(null);
-  const traineeSigRef = useRef(null);
+  const instructorPad = useRef<SignaturePad | null>(null);
+  const traineePad = useRef<SignaturePad | null>(null);
   const instructorPad = useRef(null);
   const traineePad = useRef(null);
 
