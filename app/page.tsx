@@ -1,6 +1,13 @@
 'use client';
 
 import React, { useState, useRef, useEffect } from 'react';
+type Trainee = {
+  team: string;
+  id: string;
+  name: string;
+  signature?: string;
+};
+
 import SignaturePad from 'signature_pad';
 import ExcelJS from 'exceljs';
 import { saveAs } from 'file-saver';
@@ -44,9 +51,9 @@ export default function Home() {
   const [traineeTeam, setTraineeTeam] = useState('');
   const [traineeId, setTraineeId] = useState('');
   const [traineeName, setTraineeName] = useState('');
-  const [trainees, setTrainees] = useState<{ team: string; id: string; name: string; signature?: string }[]>([]);
+ const [trainees, setTrainees] = useState<Trainee[]>([]);
 
-  const [traineeListPerCourse, setTraineeListPerCourse] = useState<{ [key: string]: { team: string; id: string; name: string }[] }>({});
+  const [traineeListPerCourse, setTraineeListPerCourse] = useState<{ [key: string]: Trainee[] }>({});
 
   const [showInstructorAuth, setShowInstructorAuth] = useState(false);
   const [instructorCode, setInstructorCode] = useState('');
