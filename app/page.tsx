@@ -625,6 +625,17 @@ traineesInCourse.forEach((trainee, index) => {
           >
             Instructor Mode
           </button>
+
+          {/* ✅ Tailwind 색상 테스트 버튼 */}
+          <button className="bg-red-500 text-white px-4 py-2 rounded">
+            빨간 버튼
+          </button>
+          <button className="bg-green-500 text-white px-4 py-2 rounded">
+            초록 버튼
+          </button>
+          <button className="bg-blue-500 text-white px-4 py-2 rounded">
+            파란 버튼
+          </button>     
         </div>
       )}
 
