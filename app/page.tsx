@@ -139,6 +139,7 @@ export default function Home() {
   const [selectedSubject, setSelectedSubject] = useState('');
 
   const [instructorCompany, setInstructorCompany] = useState('');
+  const [participantCompany, setParticipantCompany] = useState('');
   const [instructorId, setInstructorId] = useState('');
   const [instructorName, setInstructorName] = useState('');
   const [instructorLocation, setInstructorLocation] = useState('');
@@ -392,6 +393,7 @@ export default function Home() {
   worksheet.getCell('B7').value = instructorCompany || '';
   worksheet.getCell('F7').value = instructorId || '';
   worksheet.getCell('I7').value = instructorName || '';
+  worksheet.getCell('F8').value = participantCompany || '';
 
 
 
@@ -589,7 +591,7 @@ traineesInCourse.forEach((trainee, index) => {
 
       {/* 메인 화면 */}
       {screen === 'main' && (
-        <div className="flex flex-col items-center space-y-6 mt-16">
+        <div className="flex flex-col items-center space-y-8 mt-10">
           <button
             className="w-64 h-16 bg-orange-500 text-white text-xl rounded"
             onClick={() => { setShowInstructorAuth(false); setShowAdminAuth(true); }}
@@ -598,7 +600,7 @@ traineesInCourse.forEach((trainee, index) => {
           </button>
 
           <select
-            className="w-64 h-12 border text-center"
+            className="w-64 h-12 border text-left"
             value={selectedCourse}
             onChange={e => setSelectedCourse(e.target.value)}
           >
@@ -830,22 +832,24 @@ traineesInCourse.forEach((trainee, index) => {
 
           <div className="bg-gray-100 p-4 rounded space-y-4">
             <h3 className="text-lg font-semibold">Instructor INFO</h3>
-            <input className="border p-2 w-full" placeholder="Company Name" value={instructorCompany} onChange={e => setInstructorCompany(e.target.value)} />
-            <input className="border p-2 w-full" placeholder="Employee ID" value={instructorId} onChange={e => setInstructorId(e.target.value)} />
-            <input className="border p-2 w-full" placeholder="Name" value={instructorName} onChange={e => setInstructorName(e.target.value)} />
-            <input className="border p-2 w-full" placeholder="Location" value={instructorLocation} onChange={e => setInstructorLocation(e.target.value)} />
+            <input className="border p-2 w-mt2" placeholder="Company Name" value={instructorCompany} onChange={e => setInstructorCompany(e.target.value)} />
+            <input className="border p-2 w-mt2" placeholder="Employee ID" value={instructorId} onChange={e => setInstructorId(e.target.value)} />
+            <input className="border p-2 w-mt2" placeholder="Name" value={instructorName} onChange={e => setInstructorName(e.target.value)} />
+            <input className="border p-2 w-mt2" placeholder="Location" value={instructorLocation} onChange={e => setInstructorLocation(e.target.value)} />
+            <input className="border p-2 w-full" placeholder="PARTICIPANT COMPANY" value={participantCompany} onChange={(e) => setParticipantCompany(e.target.value)}
+            />
             <label className="block">Signature</label>
-            <canvas ref={instructorSigRef} className="border w-40 h-40" style={{ width: "400px", height: "400px" }} />
+            <canvas ref={instructorSigRef} className="border w-full max-w-md aspect-square" />
             <button className="bg-gray-400 text-white w-full py-2 rounded" onClick={() => instructorPad.current?.clear()}>Signature Reset</button>
           </div>
 
           <div className="bg-gray-100 p-4 rounded space-y-4">
             <h3 className="text-lg font-semibold">Trainee INFO</h3>
-            <input className="border p-2 w-full" placeholder="Team" value={traineeTeam} onChange={e => setTraineeTeam(e.target.value)} />
-            <input className="border p-2 w-full" placeholder="Employee ID" value={traineeId} onChange={e => setTraineeId(e.target.value)} />
-            <input className="border p-2 w-full" placeholder="Name" value={traineeName} onChange={e => setTraineeName(e.target.value)} />
+            <input className="border p-2 w-mt2" placeholder="Team" value={traineeTeam} onChange={e => setTraineeTeam(e.target.value)} />
+            <input className="border p-2 w-mt2" placeholder="Employee ID" value={traineeId} onChange={e => setTraineeId(e.target.value)} />
+            <input className="border p-2 w-mt2" placeholder="Name" value={traineeName} onChange={e => setTraineeName(e.target.value)} />
             <label className="block">Signature</label>
-            <canvas ref={traineeSigRef} className="border w-40 h-40" style={{ width: "400px", height: "400px" }} />
+            <canvas ref={traineeSigRef} className="border w-full max-w-md aspect-square" />
             <button className="bg-gray-400 text-white w-full py-2 rounded" onClick={() => traineePad.current?.clear()}>Signature Reset</button>
             <button className="bg-green-500 text-white w-full py-2 rounded" onClick={handleAddTrainee}>Add Trainee</button>
           </div>
@@ -898,7 +902,7 @@ traineesInCourse.forEach((trainee, index) => {
 
       {/* Step 5: Trainee List Screen */}
         {screen === 'traineeList' && (
-        <div className="mt-8 space-y-4">
+        <div className="mt-8 space-y-6">
           <h2 className="text-2xl font-bold text-center">All Trainees</h2>
 
       <ul className="space-y-2 border p-4 rounded bg-white">
