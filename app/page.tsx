@@ -1,6 +1,13 @@
 'use client';
 
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
+import SignaturePad from 'signature_pad';
+import ExcelJS from 'exceljs';
+import { saveAs } from 'file-saver';
+
+import { collection, getDocs, doc, setDoc, getDoc, deleteDoc, updateDoc } from "firebase/firestore";
+import { db } from "../firebase";
+
 type Trainee = {
   team: string;
   id: string;
@@ -8,64 +15,161 @@ type Trainee = {
   signature?: string;
 };
 
-import SignaturePad from 'signature_pad';
-import ExcelJS from 'exceljs';
-import { saveAs } from 'file-saver';
+// ---------- Firestore 관련 함수 ----------
+const saveSubjectsToFirebase = async (list: string[], contents: { [key: string]: string }) => {
+  try {
+    await setDoc(doc(db, "config", "subjects"), {
+      subjectList: list,
+      subjectContents: contents,
+    });
+  } catch (error) {
+    console.error("Error saving subjects to Firebase:", error);
+  }
+};
 
+const loadSubjectsFromFirebase = async (
+  setSubjectList: Function,
+  setSubjectContents: Function
+) => {
+  try {
+    const docSnap = await getDoc(doc(db, "config", "subjects"));
+    if (docSnap.exists()) {
+      const data = docSnap.data();
+      setSubjectList(data.subjectList || []);
+      setSubjectContents(data.subjectContents || {});
+    }
+  } catch (error) {
+    console.error("Error loading subjects from Firebase:", error);
+  }
+};
+
+const saveCourseToFirebase = async (
+  name: string,
+  password: string,
+  time: string,
+  subjectName: string
+) => {
+  try {
+    await setDoc(doc(db, 'courses', name), {
+      subject: subjectName,   // 🔹 이 부분이 반드시 포함되어야 함
+      time: time,
+      password: password,
+      createdDate: new Date().toLocaleDateString(), // 기존 createdAt 대신 createdDate 사용
+      trainees: []
+    });
+  } catch (error) {
+    console.error("Error saving course:", error);
+  }
+};
+
+    const loadCoursesFromFirebase = async (
+      setCourseList: Function,
+      setCoursePasswords: Function,
+      setCourseTimePerCourse: Function,
+      setCourseCreatedDates: Function,
+      setTraineeListPerCourse: Function,
+      setCourseSubjects: Function   
+    ) => {
+  try {
+    const snapshot = await getDocs(collection(db, "courses"));
+    const courseNames: string[] = [];
+    const passwords: { [key: string]: string } = {};
+    const times: { [key: string]: string } = {};
+    const createdDates: { [key: string]: string } = {};
+    const traineeMap: { [key: string]: Trainee[] } = {};
+
+    const subjects: { [key: string]: string } = {}; // 과목 데이터 추가
+    snapshot.forEach(docSnap => {
+      const data = docSnap.data();
+      const courseName = docSnap.id;
+      courseNames.push(courseName);
+      passwords[courseName] = data.password || "";
+      times[courseName] = data.time || "";
+      createdDates[courseName] = data.createdDate || "";
+      traineeMap[courseName] = data.trainees || [];
+      subjects[courseName] = data.subject || ""; // 🔹 subject 불러오기
+      });
+      setCourseList(courseNames);
+      setCoursePasswords(passwords);
+      setCourseTimePerCourse(times);
+      setCourseCreatedDates(createdDates);
+      setTraineeListPerCourse(traineeMap);
+      setCourseSubjects(subjects); // 🔹 과목 상태에 반영
+  } catch (error) {
+    console.error("Error loading courses:", error);
+  }
+};
+
+const saveTraineesToFirebase = async (courseName: string, trainees: Trainee[]) => {
+  try {
+    const courseRef = doc(db, "courses", courseName);
+    await updateDoc(courseRef, { trainees: trainees });
+  } catch (error) {
+    console.error("Error saving trainees:", error);
+  }
+};
+
+// ---------- 메인 컴포넌트 ----------
 export default function Home() {
   const [screen, setScreen] = useState<'main' | 'adminHome' | 'createCourse' | 'editCourse' | 'instructor' | 'traineeList'>('main');
   const [showAdminAuth, setShowAdminAuth] = useState(false);
   const [adminCode, setAdminCode] = useState('');
   const ADMIN_PASSWORD = '1234';
-  
-  const [newCourseName, setNewCourseName] = useState('');
-  const [newCourseTime, setNewCourseTime] = useState('');
-  const [newCoursePassword, setNewCoursePassword] = useState('');
-  const [selectedSubject, setSelectedSubject] = useState('');
-  const [selectedCourse, setSelectedCourse] = useState('');
-  const [courseList, setCourseList] = useState<string[]>([]);
-  const [coursePasswords, setCoursePasswords] = useState<{ [course: string]: string }>({});
-  const [courseCreatedDates, setCourseCreatedDates] = useState<{ [course: string]: string }>({});
-  const [courseTimePerCourse, setCourseTimePerCourse] = useState<{ [key: string]: string }>({});
-
-  // 과목 관련 상태
-  const [subjectList, setSubjectList] = useState<string[]>([]);
-  const [newSubjectName, setNewSubjectName] = useState('');
-  const [selectedSubjectToEdit, setSelectedSubjectToEdit] = useState('');
-  const [subjectContent, setSubjectContent] = useState('');
-  const [subjectContents, setSubjectContents] = useState<{ [key: string]: string }>({});
-
-  const [courseSubjects, setCourseSubjects] = useState<{ [course: string]: string }>({});
-
-
-  const [instructorCompany, setInstructorCompany] = useState('');
-  const [instructorId, setInstructorId] = useState('');
-  const [instructorName, setInstructorName] = useState('');
-  const [submissionTimestamp, setSubmissionTimestamp] = useState('');
-
-  const [instructorSignature, setInstructorSignature] = useState<string | null>(null);
-  const [instructorLocation, setInstructorLocation] = useState('');
-
-  const [lectureDate, setLectureDate] = useState('');
-
-  const [traineeTeam, setTraineeTeam] = useState('');
-  const [traineeId, setTraineeId] = useState('');
-  const [traineeName, setTraineeName] = useState('');
- const [trainees, setTrainees] = useState<Trainee[]>([]);
-
-  const [traineeListPerCourse, setTraineeListPerCourse] = useState<{ [key: string]: Trainee[] }>({});
 
   const [showInstructorAuth, setShowInstructorAuth] = useState(false);
   const [instructorCode, setInstructorCode] = useState('');
 
-  const [submittedDate, setSubmittedDate] = useState('');
+  const [courseList, setCourseList] = useState<string[]>([]);
+  const [coursePasswords, setCoursePasswords] = useState<{ [course: string]: string }>({});
+  const [courseCreatedDates, setCourseCreatedDates] = useState<{ [course: string]: string }>({});
+  const [courseTimePerCourse, setCourseTimePerCourse] = useState<{ [course: string]: string }>({});
+  const [courseSubjects, setCourseSubjects] = useState<{ [course: string]: string }>({});
+  const [traineeListPerCourse, setTraineeListPerCourse] = useState<{ [course: string]: Trainee[] }>({});
 
+  const [subjectList, setSubjectList] = useState<string[]>([]);
+  const [subjectContents, setSubjectContents] = useState<{ [key: string]: string }>({});
+  const [newSubjectName, setNewSubjectName] = useState('');
+  const [subjectContent, setSubjectContent] = useState('');
+  const [selectedSubjectToEdit, setSelectedSubjectToEdit] = useState('');
+
+  const [selectedCourse, setSelectedCourse] = useState('');
+  const [newCourseName, setNewCourseName] = useState('');
+  const [newCourseTime, setNewCourseTime] = useState('');
+  const [newCoursePassword, setNewCoursePassword] = useState('');
+  const [selectedSubject, setSelectedSubject] = useState('');
+
+  const [instructorCompany, setInstructorCompany] = useState('');
+  const [instructorId, setInstructorId] = useState('');
+  const [instructorName, setInstructorName] = useState('');
+  const [instructorLocation, setInstructorLocation] = useState('');
   const instructorSigRef = useRef<HTMLCanvasElement | null>(null);
   const instructorPad = useRef<SignaturePad | null>(null);
+
+  const [traineeTeam, setTraineeTeam] = useState('');
+  const [traineeId, setTraineeId] = useState('');
+  const [traineeName, setTraineeName] = useState('');
   const traineeSigRef = useRef<HTMLCanvasElement | null>(null);
   const traineePad = useRef<SignaturePad | null>(null);
+  const [trainees, setTrainees] = useState<Trainee[]>([]);
 
-const resizeCanvas = (canvas: HTMLCanvasElement, width = 400, height = 400) => {
+  const [lectureDate, setLectureDate] = useState('');
+  const [submittedDate, setSubmittedDate] = useState('');
+  const [submissionTimestamp, setSubmissionTimestamp] = useState('');
+
+  // ✅ 초기 subject 불러오기
+  useEffect(() => {
+    loadSubjectsFromFirebase(setSubjectList, setSubjectContents);
+    loadCoursesFromFirebase(
+      setCourseList,
+      setCoursePasswords,
+      setCourseTimePerCourse,
+      setCourseCreatedDates,
+      setTraineeListPerCourse,
+      setCourseSubjects
+    );
+  }, []);
+  
+  const resizeCanvas = (canvas: HTMLCanvasElement, width = 400, height = 400) => {
   const ratio = window.devicePixelRatio || 1;
   canvas.width = width * ratio;
   canvas.height = height * ratio;
@@ -116,15 +220,21 @@ const resizeCanvas = (canvas: HTMLCanvasElement, width = 400, height = 400) => {
   };
 
   // 과목 추가
-  const handleAddSubject = () => {
-    if (!newSubjectName) return alert('추가할 과목명을 입력하세요.');
-    if (!subjectContent) return alert('과목 내용을 입력하세요.');
+  const handleAddSubject = async () => {
+    if (!newSubjectName) return alert('Please enter a subject name.');
+    if (!subjectContent) return alert('Please enter subject content.');
 
-    setSubjectList(prev => [...prev, newSubjectName]);
-    setSubjectContents(prev => ({ ...prev, [newSubjectName]: subjectContent }));
+    const updatedList = [...subjectList, newSubjectName];
+    const updatedContents = { ...subjectContents, [newSubjectName]: subjectContent };
+
+    setSubjectList(updatedList);
+    setSubjectContents(updatedContents);
     setNewSubjectName('');
     setSubjectContent('');
-    alert('과목이 추가되었습니다.');
+    alert('Subject added successfully.');
+
+    // ✅ Firebase에 저장
+    await saveSubjectsToFirebase(updatedList, updatedContents);
   };
 
   // 과목 선택 시 내용 로드
@@ -141,98 +251,89 @@ const resizeCanvas = (canvas: HTMLCanvasElement, width = 400, height = 400) => {
   };
 
   // 과목 삭제
-  const handleDeleteSubject = () => {
-    if (!selectedSubjectToEdit) return alert('삭제할 과목을 선택하세요.');
+  const handleDeleteSubject = async () => {
+  if (!selectedSubjectToEdit) return alert('삭제할 과목을 선택하세요.');
 
-    setSubjectList(prev => prev.filter(s => s !== selectedSubjectToEdit));
-    setSubjectContents(prev => {
-      const copy = { ...prev };
-      delete copy[selectedSubjectToEdit];
-      return copy;
-    });
-    setSelectedSubjectToEdit('');
-    setSubjectContent('');
-    alert('과목이 삭제되었습니다.');
-  };
+  const updatedList = subjectList.filter(s => s !== selectedSubjectToEdit);
+  const updatedContents = { ...subjectContents };
+  delete updatedContents[selectedSubjectToEdit];
+
+  setSubjectList(updatedList);
+  setSubjectContents(updatedContents);
+  setSelectedSubjectToEdit('');
+  setSubjectContent('');
+  alert('과목이 삭제되었습니다.');
+
+  // **Firebase 반영**
+  await saveSubjectsToFirebase(updatedList, updatedContents);
+};
 
   // 과정 생성
-  const handleCreateCourse = () => {
-    if (!newCourseName || !newCourseTime || !newCoursePassword) {
-      return alert('과정명, 교육시간, 비밀번호를 모두 입력하세요.');
-    }
-    if (!selectedSubject) return alert('과목명을 먼저 선택하세요.');
+  const handleCreateCourse = async () => {
+  if (!newCourseName || !newCourseTime || !newCoursePassword) {
+    return alert('과정명, 교육시간, 비밀번호를 모두 입력하세요.');
+  }
+  if (!selectedSubject) return alert('과목명을 먼저 선택하세요.');
 
-    // 과정 생성 시
-    setCourseList(prev => [...prev, newCourseName]);
-    setCoursePasswords(prev => ({ ...prev, [newCourseName]: newCoursePassword }));
-    setCourseCreatedDates(prev => ({ ...prev, [newCourseName]: new Date().toLocaleDateString() }));
-    setCourseTimePerCourse(prev => ({ ...prev, [newCourseName]: newCourseTime }));
+  setCourseList(prev => [...prev, newCourseName]);
+  setCoursePasswords(prev => ({ ...prev, [newCourseName]: newCoursePassword }));
+  setCourseCreatedDates(prev => ({ ...prev, [newCourseName]: new Date().toLocaleDateString() }));
+  setCourseTimePerCourse(prev => ({ ...prev, [newCourseName]: newCourseTime }));
+  setCourseSubjects(prev => ({ ...prev, [newCourseName]: selectedSubject }));
 
-    // 🔽 여기에 과목 매핑 추가!
-    setCourseSubjects(prev => ({ ...prev, [newCourseName]: selectedSubject }));
-    
-    setNewCourseName('');
-    setNewCourseTime('');
-    setNewCoursePassword('');
-    setSelectedSubject('');
-    alert('과정이 생성되었습니다.');
-  };
+  // **Firestore 저장 추가**
+  await saveCourseToFirebase(newCourseName, newCoursePassword, newCourseTime, selectedSubject);
 
-  // 수강생 추가
-      const handleAddTrainee = () => {
-        if (!traineeTeam || !traineeId || !traineeName) {
-          return alert('수강자 소속, 사번, 이름을 모두 입력하세요.');
-        }
+  setNewCourseName('');
+  setNewCourseTime('');
+  setNewCoursePassword('');
+  setSelectedSubject('');
+  alert('과정이 생성되었습니다.');
+};
 
-        if (!traineePad.current || traineePad.current.isEmpty()) {
-          return alert('수강생 서명을 입력해주세요.');
-        }
+  // ---------- 수강생 추가 ----------
+    const handleAddTrainee = async () => {
+      if (!traineeTeam || !traineeId || !traineeName) {
+        return alert('수강자 소속, 사번, 이름을 모두 입력하세요.');
+      }
+      if (!traineePad.current || traineePad.current.isEmpty()) {
+        return alert('수강생 서명을 입력해주세요.');
+      }
+      const sigData = traineePad.current.toDataURL();
+      const newList = [...trainees, { team: traineeTeam, id: traineeId, name: traineeName, signature: sigData }];
 
-        const sigData = traineePad.current.toDataURL();
+      setTrainees(newList);
 
-        const newList = [...trainees, {
-          team: traineeTeam,
-          id: traineeId,
-          name: traineeName,
-          signature: sigData
-        }];
+      if (selectedCourse) {
+        setTraineeListPerCourse(prev => ({ ...prev, [selectedCourse]: newList }));
+        await saveTraineesToFirebase(selectedCourse, newList);
+      }
 
-        setTrainees(newList);
-        if (selectedCourse) {
-          setTraineeListPerCourse(prev => ({ ...prev, [selectedCourse]: newList }));
-        }
+      setTraineeTeam('');
+      setTraineeId('');
+      setTraineeName('');
+      traineePad.current.clear();
+    };
 
-        setTraineeTeam('');
-        setTraineeId('');
-        setTraineeName('');
-        traineePad.current.clear();
-
-// ✅ 수강생 서명 초기화
-if (traineePad.current) {
-  traineePad.current.clear();
-}
-    if (selectedCourse) {
-      setTraineeListPerCourse(prev => ({ ...prev, [selectedCourse]: newList }));
-    }
-    setTraineeTeam('');
-    setTraineeId('');
-    setTraineeName('');
-  };
-
-  const handleDeleteTrainee = (idx: number) => {
+  // ---------- 수강생 관리 ----------
+  // 수강생 목록 보기
+    const handleDeleteTrainee = async (idx: number) => {
     const newList = trainees.filter((_, i) => i !== idx);
     setTrainees(newList);
     if (selectedCourse) {
       setTraineeListPerCourse(prev => ({ ...prev, [selectedCourse]: newList }));
+      await saveTraineesToFirebase(selectedCourse, newList);
     }
   };
 
-    const handleClearTrainees = () => {
+  const handleClearTrainees = async () => {
     setTrainees([]);
     if (selectedCourse) {
       setTraineeListPerCourse(prev => ({ ...prev, [selectedCourse]: [] }));
+      await saveTraineesToFirebase(selectedCourse, []);
     }
   };
+
 
     // 서명 후 제출
     const handleSubmit = () => {
@@ -386,22 +487,32 @@ traineesInCourse.forEach((trainee, index) => {
     saveAs(new Blob([buffer]), `${course}_전체정보.xlsx`);
   };
 
-  // TODO: 과정 삭제 기능
-  const handleDeleteCourse = (course: string) => {
-    if (confirm(`${course} 과정을 삭제하시겠습니까?`)) {
-      setCourseList(prev => prev.filter(c => c !== course));
-      setCoursePasswords(prev => {
-        const cp = { ...prev };
-        delete cp[course];
-        return cp;
-      });
-      setCourseCreatedDates(prev => {
-        const cd = { ...prev };
-        delete cd[course];
-        return cd;
-      });
-    }
-  };
+  // 과정 삭제 기능
+  const handleDeleteCourse = async (course: string) => {
+  if (confirm(`${course} 과정을 삭제하시겠습니까?`)) {
+    const updatedList = courseList.filter(c => c !== course);
+    const updatedPasswords = { ...coursePasswords };
+    const updatedDates = { ...courseCreatedDates };
+    const updatedTimes = { ...courseTimePerCourse };
+    const updatedSubjects = { ...courseSubjects };
+    
+    delete updatedPasswords[course];
+    delete updatedDates[course];
+    delete updatedTimes[course];
+    delete updatedSubjects[course];
+
+    setCourseList(updatedList);
+    setCoursePasswords(updatedPasswords);
+    setCourseCreatedDates(updatedDates);
+    setCourseTimePerCourse(updatedTimes);
+    setCourseSubjects(updatedSubjects);
+
+    // **Firebase 반영**
+    await deleteDoc(doc(db, "courses", course));
+
+    alert(`${course} 과정이 삭제되었습니다.`);
+  }
+};
 
   // UI 구성 시작
   return (
@@ -441,35 +552,35 @@ traineesInCourse.forEach((trainee, index) => {
       {showInstructorAuth && (
         <div className="fixed inset-0 bg-black bg-opacity-40 flex items-center justify-center">
           <div className="bg-white p-6 rounded shadow-md w-80">
-            <h2 className="text-lg font-bold mb-4">과정 비밀번호 인증</h2>
+            <h2 className="text-lg font-bold mb-4">Course Password</h2>
             <input
               type="password"
               className="border p-2 w-full mb-4"
-              placeholder="비밀번호 입력"
+              placeholder="Enter password"
               value={instructorCode}
               onChange={e => setInstructorCode(e.target.value)}
             />
             <div className="flex justify-end space-x-2">
-              <button
-                className="bg-gray-300 px-4 py-2 rounded"
-                onClick={() => { setShowInstructorAuth(false); setInstructorCode(''); }}
-              >
-                취소
-              </button>
-              <button
-                className="bg-blue-500 text-white px-4 py-2 rounded"
-                onClick={() => {
-                  if (coursePasswords[selectedCourse] === instructorCode) {
-                    setShowInstructorAuth(false);
-                    setInstructorCode('');
-                    setScreen('instructor');
-                  } else {
-                    alert('비밀번호가 틀렸습니다.');
-                  }
-                }}
-              >
-                확인
-              </button>
+            <button
+              className="bg-gray-300 px-4 py-2 rounded"
+              onClick={() => { setShowInstructorAuth(false); setInstructorCode(''); }}
+            >
+              Cancel
+            </button>
+            <button
+              className="bg-blue-500 text-white px-4 py-2 rounded"
+              onClick={() => {
+                if (coursePasswords[selectedCourse] === instructorCode) {
+                  setShowInstructorAuth(false);
+                  setInstructorCode('');
+                  setScreen('instructor');
+                } else {
+                  alert('Incorrect password.');
+                }
+              }}
+            >
+              Ok
+            </button>
             </div>
           </div>
         </div>
@@ -482,7 +593,7 @@ traineesInCourse.forEach((trainee, index) => {
             className="w-64 h-16 bg-orange-500 text-white text-xl rounded"
             onClick={() => { setShowInstructorAuth(false); setShowAdminAuth(true); }}
           >
-            관리자 모드
+            Admin Mode
           </button>
 
           <select
@@ -490,26 +601,26 @@ traineesInCourse.forEach((trainee, index) => {
             value={selectedCourse}
             onChange={e => setSelectedCourse(e.target.value)}
           >
-            <option value="">과정 선택</option>
-            {courseList.map((course, idx) => (
-              <option key={idx} value={course}>
-                {course}
-              </option>
-            ))}
+            <option value="">Select Course</option>
+            {courseList.map((course) => (
+            <option key={course} value={course}>
+              {course} ({courseSubjects[course] || 'No Subject'})
+            </option>
+          ))}
           </select>
 
           <button
             className="w-64 h-16 bg-blue-500 text-white text-xl rounded"
             onClick={() => {
               if (!selectedCourse) {
-                alert('과정을 먼저 선택하세요.');
+                alert('Please select a course first.');
                 return;
               }
               setShowAdminAuth(false);
               setShowInstructorAuth(true);
             }}
           >
-            강사 모드
+            Instructor Mode
           </button>
         </div>
       )}
@@ -523,26 +634,28 @@ traineesInCourse.forEach((trainee, index) => {
         className="bg-green-500 text-white px-4 py-2 rounded"
         onClick={() => setScreen('createCourse')}
       >
-        과정 생성
+        위탁업체 생성
       </button>
       <button
         className="bg-pink-500 text-white px-4 py-2 rounded"
         onClick={() => setScreen('editCourse')}
       >
-        과목 수정
+        SUBJECT CONTENTS 추가/수정  
       </button>
     </div>
 
-    {/* ✅ 생성된 과정 목록 (다운로드 및 삭제만 가능) */}
+    {/* ✅ 생성된 업체 목록 (다운로드 및 삭제만 가능) */}
     <div className="mt-6 space-y-2">
-      <h3 className="text-lg font-semibold">생성된 과정 목록</h3>
+      <h3 className="text-lg font-semibold">생성된 업체 목록</h3>
       {courseList.map((course, idx) => (
         <div key={idx} className="flex justify-between items-center p-2 border rounded">
           <div>
-            <div className="font-semibold">{course}</div>
-            <div className="text-sm text-gray-500">
-              생성일: {courseCreatedDates[course] || '정보 없음'}
-            </div>
+            <div className="font-semibold">
+            {course} ({courseSubjects[course] || "No Subject"})
+          </div>
+          <div className="text-sm text-gray-500">
+            생성일: {courseCreatedDates[course] || 'N/A'}
+          </div>
           </div>
           <div className="flex space-x-2">
             <button
@@ -553,8 +666,8 @@ traineesInCourse.forEach((trainee, index) => {
             </button>
             <button
               className="bg-red-500 text-white px-3 py-1 rounded text-sm"
-              onClick={() => {
-                if (window.confirm(`${course} 과정을 삭제하시겠습니까?`)) {
+              onClick={async () => {
+                if (window.confirm(`${course} 업체를 삭제하시겠습니까?`)) {
                   setCourseList(prev => prev.filter(c => c !== course));
                   setCoursePasswords(prev => {
                     const copy = { ...prev };
@@ -581,6 +694,11 @@ traineesInCourse.forEach((trainee, index) => {
                     delete copy[course];
                     return copy;
                   });
+
+                  // **Firebase 반영**
+                  await deleteDoc(doc(db, "courses", course));
+
+                  alert(`${course} 과정이 삭제되었습니다.`);
                 }
               }}
             >
@@ -603,10 +721,10 @@ traineesInCourse.forEach((trainee, index) => {
     {/* Step 2: 과정 생성 화면 */}
     {screen === 'createCourse' && (
       <div className="mt-8 space-y-4">
-        <h2 className="text-xl font-bold">과정 생성</h2>
+        <h2 className="text-xl font-bold">위탁업체 생성</h2>
         <input
           className="border p-2 w-full"
-          placeholder="과정명"
+          placeholder="업체명"
           value={newCourseName}
           onChange={e => setNewCourseName(e.target.value)}
         />
@@ -618,7 +736,7 @@ traineesInCourse.forEach((trainee, index) => {
         />
         <input
           className="border p-2 w-full"
-          placeholder="과정 비밀번호"
+          placeholder="업체용 비밀번호"
           value={newCoursePassword}
           onChange={e => setNewCoursePassword(e.target.value)}
         />
@@ -627,7 +745,7 @@ traineesInCourse.forEach((trainee, index) => {
           value={selectedSubject}
           onChange={e => setSelectedSubject(e.target.value)}
         >
-          <option value="">과목 선택</option>
+          <option value="">SUBJECT 선택</option>
           {subjectList.map((subj, idx) => (
             <option key={idx} value={subj}>{subj}</option>
           ))}
@@ -649,19 +767,19 @@ traineesInCourse.forEach((trainee, index) => {
       </div>
     )}
 
-    {/* Step 3: 과목 수정 화면 */}
+    {/* Step 3: SUBJECT 수정 화면 */}
       {screen === 'editCourse' && (
         <div className="mt-8 space-y-4">
-          <h2 className="text-xl font-bold">과목 관리</h2>
+          <h2 className="text-xl font-bold">SUBJECT 관리</h2>
           <input
             className="border p-2 w-full"
-            placeholder="새 과목명"
+            placeholder="새 SUBJECT명"
             value={newSubjectName}
             onChange={e => setNewSubjectName(e.target.value)}
           />
           <textarea
             className="border p-2 w-full h-24"
-            placeholder="과목 내용"
+            placeholder="CONTENT 내용"
             value={subjectContent}
             onChange={e => setSubjectContent(e.target.value)}
           />
@@ -690,7 +808,7 @@ traineesInCourse.forEach((trainee, index) => {
             value={selectedSubjectToEdit}
             onChange={e => handleSelectSubjectToEdit(e.target.value)}
           >
-            <option value="">과목 선택</option>
+            <option value="">SUBJECT 선택</option>
             {subjectList.map((subj, idx) => (
               <option key={idx} value={subj}>{subj}</option>
             ))}
@@ -707,54 +825,54 @@ traineesInCourse.forEach((trainee, index) => {
     {/* Step 4: 강사 화면 */}
       {screen === 'instructor' && (
         <div className="mt-8 space-y-6">
-          <h2 className="text-2xl font-bold text-center">강사 입력 화면</h2>
+          <h2 className="text-2xl font-bold text-center">Instructor Mode</h2>
 
           <div className="bg-gray-100 p-4 rounded space-y-4">
-            <h3 className="text-lg font-semibold">강사 정보</h3>
-            <input className="border p-2 w-full" placeholder="회사명" value={instructorCompany} onChange={e => setInstructorCompany(e.target.value)} />
-            <input className="border p-2 w-full" placeholder="사번" value={instructorId} onChange={e => setInstructorId(e.target.value)} />
-            <input className="border p-2 w-full" placeholder="이름" value={instructorName} onChange={e => setInstructorName(e.target.value)} />
+            <h3 className="text-lg font-semibold">Instructor INFO</h3>
+            <input className="border p-2 w-full" placeholder="Company Name" value={instructorCompany} onChange={e => setInstructorCompany(e.target.value)} />
+            <input className="border p-2 w-full" placeholder="Employee ID" value={instructorId} onChange={e => setInstructorId(e.target.value)} />
+            <input className="border p-2 w-full" placeholder="Name" value={instructorName} onChange={e => setInstructorName(e.target.value)} />
             <input className="border p-2 w-full" placeholder="Location" value={instructorLocation} onChange={e => setInstructorLocation(e.target.value)} />
-            <label className="block">서명</label>
+            <label className="block">Signature</label>
             <canvas ref={instructorSigRef} className="border w-40 h-40" style={{ width: "400px", height: "400px" }} />
-            <button className="bg-gray-400 text-white w-full py-2 rounded" onClick={() => instructorPad.current?.clear()}>서명 초기화</button>
+            <button className="bg-gray-400 text-white w-full py-2 rounded" onClick={() => instructorPad.current?.clear()}>Signature Reset</button>
           </div>
 
           <div className="bg-gray-100 p-4 rounded space-y-4">
-            <h3 className="text-lg font-semibold">수강생 정보</h3>
-            <input className="border p-2 w-full" placeholder="소속" value={traineeTeam} onChange={e => setTraineeTeam(e.target.value)} />
-            <input className="border p-2 w-full" placeholder="사번" value={traineeId} onChange={e => setTraineeId(e.target.value)} />
-            <input className="border p-2 w-full" placeholder="이름" value={traineeName} onChange={e => setTraineeName(e.target.value)} />
-            <label className="block">서명</label>
+            <h3 className="text-lg font-semibold">Trainee INFO</h3>
+            <input className="border p-2 w-full" placeholder="Team" value={traineeTeam} onChange={e => setTraineeTeam(e.target.value)} />
+            <input className="border p-2 w-full" placeholder="Employee ID" value={traineeId} onChange={e => setTraineeId(e.target.value)} />
+            <input className="border p-2 w-full" placeholder="Name" value={traineeName} onChange={e => setTraineeName(e.target.value)} />
+            <label className="block">Signature</label>
             <canvas ref={traineeSigRef} className="border w-40 h-40" style={{ width: "400px", height: "400px" }} />
-            <button className="bg-gray-400 text-white w-full py-2 rounded" onClick={() => traineePad.current?.clear()}>서명 초기화</button>
-            <button className="bg-green-500 text-white w-full py-2 rounded" onClick={handleAddTrainee}>수강생 추가</button>
+            <button className="bg-gray-400 text-white w-full py-2 rounded" onClick={() => traineePad.current?.clear()}>Signature Reset</button>
+            <button className="bg-green-500 text-white w-full py-2 rounded" onClick={handleAddTrainee}>Add Trainee</button>
           </div>
 
           <div className="bg-white p-4 rounded border text-center">
-            <h3 className="text-lg font-semibold mb-2">수강생 상태</h3>
-            <p className="text-xl">{trainees.length}명 완료됨</p>
+            <h3 className="text-lg font-semibold mb-2">Trainee Status</h3>
+            <p className="text-xl">{trainees.length} Completed</p>
             <button
               className="bg-blue-500 text-white w-full py-2 rounded mt-2"
               onClick={() => setScreen('traineeList')}
             >
-              전체 수강생 보기
+              View All Trainees
             </button>
           </div>
 
           <div className="flex space-x-2 items-end">
             <div className="flex-1">
-              <label className="block font-medium mb-1">강의 날짜 (YYYY-MM-DD)</label>
+              <label className="block font-medium mb-1">Lecture Date</label>
               <input
                 type="text"
-                placeholder="YYYY-MM-DD"
+                placeholder=""
                 className="border p-2 w-full"
                 value={lectureDate}
                 onChange={e => setLectureDate(e.target.value)}
               />
               <input
                 className="border p-2 w-full"
-                placeholder="제출일 (예: YYYY-MM-DD)"
+                placeholder="SubmittedDate"
                 value={submittedDate}
                 onChange={e => setSubmittedDate(e.target.value)}
               />
@@ -764,7 +882,7 @@ traineesInCourse.forEach((trainee, index) => {
               className="bg-yellow-400 text-black w-1/2 py-2 rounded"
               onClick={handleSubmit}
             >
-              제출
+              Submit
             </button>
           </div>
 
@@ -772,19 +890,19 @@ traineesInCourse.forEach((trainee, index) => {
             className="bg-gray-400 text-white w-full py-2 rounded mt-2"
             onClick={() => setScreen('main')}
           >
-            메인화면
-          </button>         
+            Main Menu
+          </button>
         </div>
       )}
 
-      {/* Step 5: 수강생 목록 화면 */}
+      {/* Step 5: Trainee List Screen */}
         {screen === 'traineeList' && (
         <div className="mt-8 space-y-4">
-          <h2 className="text-2xl font-bold text-center">전체 수강생 목록</h2>
+          <h2 className="text-2xl font-bold text-center">All Trainees</h2>
 
       <ul className="space-y-2 border p-4 rounded bg-white">
         {trainees.length === 0 ? (
-          <p>등록된 수강생이 없습니다.</p>
+          <p>No trainees registered.</p>
         ) : (
           trainees.map((t, idx) => (
             <li key={idx} className="flex justify-between items-center border-b pb-1">
@@ -793,7 +911,7 @@ traineesInCourse.forEach((trainee, index) => {
                 onClick={() => handleDeleteTrainee(idx)}
                 className="text-sm text-red-500"
               >
-                삭제
+                Delete
               </button>
             </li>
           ))
@@ -806,7 +924,7 @@ traineesInCourse.forEach((trainee, index) => {
         className="bg-red-500 text-white w-full py-2 rounded"
         onClick={handleClearTrainees}
       >
-        전체 수강생 삭제
+        Delete All Trainees
       </button>
     )}
 
@@ -814,7 +932,7 @@ traineesInCourse.forEach((trainee, index) => {
       className="bg-gray-400 text-white w-full py-2 rounded"
       onClick={() => setScreen('instructor')}
     >
-      돌아가기
+      Back
     </button>
   </div>
 )}
