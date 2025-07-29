@@ -155,6 +155,7 @@ export default function Home() {
   const [lectureDate, setLectureDate] = useState('');
   const [submittedDate, setSubmittedDate] = useState('');
   const [submissionTimestamp, setSubmissionTimestamp] = useState('');
+  const [instructorSignature, setInstructorSignature] = useState<string>('');
 
   // ✅ 초기 subject 불러오기
   useEffect(() => {
