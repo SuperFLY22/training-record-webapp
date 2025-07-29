@@ -139,7 +139,6 @@ export default function Home() {
   const [selectedSubject, setSelectedSubject] = useState('');
 
   const [instructorCompany, setInstructorCompany] = useState('');
-  const [participantCompany, setParticipantCompany] = useState('');
   const [instructorId, setInstructorId] = useState('');
   const [instructorName, setInstructorName] = useState('');
   const [instructorLocation, setInstructorLocation] = useState('');
@@ -393,9 +392,8 @@ export default function Home() {
   worksheet.getCell('B7').value = instructorCompany || '';
   worksheet.getCell('F7').value = instructorId || '';
   worksheet.getCell('I7').value = instructorName || '';
-  worksheet.getCell('F8').value = participantCompany || '';
 
-
+  worksheet.getCell('F8').value = selectedCourse ? selectedCourse : '';
 
     // 🔄 강사 서명 추가
     if (instructorSignature) {
@@ -449,6 +447,8 @@ export default function Home() {
     worksheet.getCell('B7').value = instructorCompany;
     worksheet.getCell('F7').value = instructorId;
     worksheet.getCell('I7').value = instructorName;
+
+    worksheet.getCell('F8').value = course;  // 업체명(과정명) 입력
 
 // ✅ 강사 서명 이미지 삽입
 if (instructorSignature) {
@@ -836,8 +836,6 @@ traineesInCourse.forEach((trainee, index) => {
             <input className="border p-2 w-mt2" placeholder="Employee ID" value={instructorId} onChange={e => setInstructorId(e.target.value)} />
             <input className="border p-2 w-mt2" placeholder="Name" value={instructorName} onChange={e => setInstructorName(e.target.value)} />
             <input className="border p-2 w-mt2" placeholder="Location" value={instructorLocation} onChange={e => setInstructorLocation(e.target.value)} />
-            <input className="border p-2 w-full" placeholder="PARTICIPANT COMPANY" value={participantCompany} onChange={(e) => setParticipantCompany(e.target.value)}
-            />
             <label className="block">Signature</label>
             <canvas ref={instructorSigRef} className="border w-full max-w-md aspect-square" />
             <button className="bg-gray-400 text-white w-full py-2 rounded" onClick={() => instructorPad.current?.clear()}>Signature Reset</button>
