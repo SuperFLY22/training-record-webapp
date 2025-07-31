@@ -585,18 +585,18 @@ traineesInCourse.forEach((trainee, index) => {
   if (!selectedMode) {
     return (
       <div className="flex flex-col items-center justify-center h-screen space-y-6">
-        <h1 className="text-2xl font-bold">모드를 선택하세요</h1>
+        <h1 className="text-2xl font-bold">Select Domestic / Overseas Mode</h1>
         <button
           className="bg-blue-500 text-white px-6 py-3 rounded"
           onClick={() => setSelectedMode("overseas")}
         >
-          해외위탁 모드
+          Overseas mode
         </button>
         <button
           className="bg-green-500 text-white px-6 py-3 rounded"
           onClick={() => setSelectedMode("domestic")}
         >
-          국내 모드
+          Domestic mode
         </button>
       </div>
     );
@@ -604,6 +604,14 @@ traineesInCourse.forEach((trainee, index) => {
 
   return (
     <div className="p-6 max-w-4xl mx-auto">
+  {/* 현재 모드 표시 */}
+  {selectedMode && (
+    <div className="mb-4 text-right text-sm text-gray-600">
+      현재 모드: <span className="font-bold">
+        {selectedMode === "domestic" ? "Domestic mode" : "Overseas mode"}
+      </span>
+    </div>
+  )}
       {/* 관리자 인증 모달 */}
       {showAdminAuth && (
         <div className="fixed inset-0 bg-black bg-opacity-40 flex items-center justify-center">
@@ -717,7 +725,7 @@ traineesInCourse.forEach((trainee, index) => {
               setScreen('main');
             }}
           >
-            국내/해외 선택화면으로
+             Move to Fist Page
           </button>
         </div>
       )}
