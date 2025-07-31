@@ -16,70 +16,92 @@ type Trainee = {
 };
 
 // ---------- Firestore 관련 함수 ----------
-const saveSubjectsToFirebase = async (list: string[], contents: { [key: string]: string }) => {
+const saveSubjectsToFirebase = async (
+  mode: "domestic" | "overseas",
+  list: string[],
+  contents: Record<string, string>
+) => {
   try {
-    await setDoc(doc(db, "config", "subjects"), {
-      subjectList: list,
-      subjectContents: contents,
-    });
+    await setDoc(
+      doc(db, `config_${mode}`, `${mode}_subject`),   // 🔹 문서명을 동적으로
+      {
+        subjectList: list,
+        subjectContents: contents,
+      }
+    );
   } catch (error) {
-    console.error("Error saving subjects to Firebase:", error);
+    console.error("Error saving subjects:", error);
   }
 };
 
-const loadSubjectsFromFirebase = async (
+  const loadSubjectsFromFirebase = async (
+  mode: "domestic" | "overseas",
   setSubjectList: Function,
   setSubjectContents: Function
 ) => {
   try {
-    const docSnap = await getDoc(doc(db, "config", "subjects"));
+    const docSnap = await getDoc(
+      doc(db, `config_${mode}`, `${mode}_subject`)   // 🔹 문서명을 동적으로
+    );
+
     if (docSnap.exists()) {
       const data = docSnap.data();
       setSubjectList(data.subjectList || []);
       setSubjectContents(data.subjectContents || {});
+    } else {
+      console.warn(`${mode} subject document not found`);
+      setSubjectList([]);
+      setSubjectContents({});
     }
   } catch (error) {
-    console.error("Error loading subjects from Firebase:", error);
+    console.error("Error loading subjects:", error);
   }
 };
 
 const saveCourseToFirebase = async (
+  mode: "domestic" | "overseas",
   name: string,
   password: string,
   time: string,
   subjectName: string
 ) => {
   try {
-    await setDoc(doc(db, 'courses', name), {
-      subject: subjectName,   // 🔹 이 부분이 반드시 포함되어야 함
-      time: time,
-      password: password,
-      createdDate: new Date().toLocaleDateString(), // 기존 createdAt 대신 createdDate 사용
-      trainees: []
-    });
+    await setDoc(
+      doc(db, mode === "domestic" ? "course_domestic" : "course_overseas", name),
+      {
+        subject: subjectName,
+        time: time,
+        password: password,
+        createdDate: new Date().toLocaleDateString(),
+        trainees: []   // 초기 trainee 리스트
+      }
+    );
   } catch (error) {
     console.error("Error saving course:", error);
   }
 };
 
     const loadCoursesFromFirebase = async (
-      setCourseList: Function,
-      setCoursePasswords: Function,
-      setCourseTimePerCourse: Function,
-      setCourseCreatedDates: Function,
-      setTraineeListPerCourse: Function,
-      setCourseSubjects: Function   
-    ) => {
+  mode: "domestic" | "overseas",
+  setCourseList: Function,
+  setCoursePasswords: Function,
+  setCourseTimePerCourse: Function,
+  setCourseCreatedDates: Function,
+  setTraineeListPerCourse: Function,
+  setCourseSubjects: Function
+) => {
   try {
-    const snapshot = await getDocs(collection(db, "courses"));
+    const collectionName = mode === "domestic" ? "course_domestic" : "course_overseas";
+    const snapshot = await getDocs(collection(db, collectionName));
+
     const courseNames: string[] = [];
     const passwords: { [key: string]: string } = {};
     const times: { [key: string]: string } = {};
     const createdDates: { [key: string]: string } = {};
     const traineeMap: { [key: string]: Trainee[] } = {};
+    const subjects: { [key: string]: string } = {};
 
-    const subjects: { [key: string]: string } = {}; // 과목 데이터 추가
-    snapshot.forEach(docSnap => {
+    snapshot.forEach((docSnap) => {
       const data = docSnap.data();
       const courseName = docSnap.id;
       courseNames.push(courseName);
@@ -87,26 +109,31 @@ const saveCourseToFirebase = async (
       times[courseName] = data.time || "";
       createdDates[courseName] = data.createdDate || "";
       traineeMap[courseName] = data.trainees || [];
-      subjects[courseName] = data.subject || ""; // 🔹 subject 불러오기
-      });
-      setCourseList(courseNames);
-      setCoursePasswords(passwords);
-      setCourseTimePerCourse(times);
-      setCourseCreatedDates(createdDates);
-      setTraineeListPerCourse(traineeMap);
-      setCourseSubjects(subjects); // 🔹 과목 상태에 반영
+      subjects[courseName] = data.subject || "";
+    });
+
+    setCourseList(courseNames);
+    setCoursePasswords(passwords);
+    setCourseTimePerCourse(times);
+    setCourseCreatedDates(createdDates);
+    setTraineeListPerCourse(traineeMap);
+    setCourseSubjects(subjects);
   } catch (error) {
     console.error("Error loading courses:", error);
   }
 };
 
-const saveTraineesToFirebase = async (courseName: string, trainees: Trainee[]) => {
-  try {
-    const courseRef = doc(db, "courses", courseName);
-    await updateDoc(courseRef, { trainees: trainees });
-  } catch (error) {
-    console.error("Error saving trainees:", error);
-  }
+  const saveTraineesToFirebase = async (
+  mode: "domestic" | "overseas",
+  courseName: string,
+  trainees: Trainee[]
+) => {
+  const courseRef = doc(
+    db,
+    mode === "domestic" ? "course_domestic" : "course_overseas",
+    courseName
+  );
+  await updateDoc(courseRef, { trainees });
 };
 
 // ---------- 메인 컴포넌트 ----------
@@ -165,8 +192,10 @@ export default function Home() {
 
   // ✅ 초기 subject 불러오기
   useEffect(() => {
-    loadSubjectsFromFirebase(setSubjectList, setSubjectContents);
+  if (selectedMode) {
+    loadSubjectsFromFirebase(selectedMode, setSubjectList, setSubjectContents);
     loadCoursesFromFirebase(
+      selectedMode,
       setCourseList,
       setCoursePasswords,
       setCourseTimePerCourse,
@@ -174,7 +203,8 @@ export default function Home() {
       setTraineeListPerCourse,
       setCourseSubjects
     );
-  }, []);
+  }
+}, [selectedMode]);
   
   const resizeCanvas = (canvas: HTMLCanvasElement, width = 400, height = 400) => {
   const ratio = window.devicePixelRatio || 1;
@@ -190,30 +220,36 @@ export default function Home() {
 
   // 화면 전환 시 SignaturePad 초기화
   useEffect(() => {
-    if (screen === 'instructor') {
-      if (instructorSigRef.current) {
-        instructorPad.current = new SignaturePad(instructorSigRef.current);
-        resizeCanvas(instructorSigRef.current);
-        instructorPad.current.clear();
-      }
-      if (traineeSigRef.current) {
-        traineePad.current = new SignaturePad(traineeSigRef.current);
-        resizeCanvas(traineeSigRef.current);
-        traineePad.current.clear();
-      }
-
-      if (selectedCourse && traineeListPerCourse[selectedCourse]) {
-        setTrainees(traineeListPerCourse[selectedCourse]);
-      } else {
-        setTrainees([]);
-      }
-
-      setInstructorCompany('');
-      setInstructorId('');
-      setInstructorName('');
-      setSubmissionTimestamp('');
+  if (screen === 'instructor') {
+    if (instructorSigRef.current) {
+      instructorPad.current = new SignaturePad(instructorSigRef.current);
+      resizeCanvas(instructorSigRef.current);
+      instructorPad.current.clear();
     }
-  }, [screen, selectedCourse]);
+    if (traineeSigRef.current) {
+      traineePad.current = new SignaturePad(traineeSigRef.current);
+      resizeCanvas(traineeSigRef.current);
+      traineePad.current.clear();
+    }
+
+    if (selectedCourse && traineeListPerCourse[selectedCourse]) {
+      setTrainees(traineeListPerCourse[selectedCourse]);
+    } else {
+      setTrainees([]);
+    }
+
+    // 🔹 기존 초기화 항목
+    setInstructorCompany('');
+    setInstructorId('');
+    setInstructorName('');
+    setSubmissionTimestamp('');
+
+    // 🔹 추가 초기화 항목
+    setInstructorLocation('');
+    setLectureDate('');
+    setSubmittedDate('');
+  }
+}, [screen, selectedCourse]);
 
   // 관리자 비밀번호 확인
   const handleAdminConfirm = () => {
@@ -241,7 +277,7 @@ export default function Home() {
     alert('Subject added successfully.');
 
     // ✅ Firebase에 저장
-    await saveSubjectsToFirebase(updatedList, updatedContents);
+    await saveSubjectsToFirebase(selectedMode!, updatedList, updatedContents);
   };
 
   // 과목 선택 시 내용 로드
@@ -259,20 +295,31 @@ export default function Home() {
 
   // 과목 삭제
   const handleDeleteSubject = async () => {
-  if (!selectedSubjectToEdit) return alert('삭제할 과목을 선택하세요.');
+  if (!selectedSubjectToEdit) return alert("삭제할 과목을 선택하세요.");
+  if (!selectedMode) return alert("모드를 먼저 선택하세요.");
 
-  const updatedList = subjectList.filter(s => s !== selectedSubjectToEdit);
-  const updatedContents = { ...subjectContents };
-  delete updatedContents[selectedSubjectToEdit];
+  const confirmDelete = confirm(`${selectedSubjectToEdit} 과목을 삭제하시겠습니까?`);
+  if (!confirmDelete) return;
 
-  setSubjectList(updatedList);
-  setSubjectContents(updatedContents);
-  setSelectedSubjectToEdit('');
-  setSubjectContent('');
-  alert('과목이 삭제되었습니다.');
+  try {
+    // **UI 상태 업데이트**
+    const updatedList = subjectList.filter((s) => s !== selectedSubjectToEdit);
+    const updatedContents = { ...subjectContents };
+    delete updatedContents[selectedSubjectToEdit];
 
-  // **Firebase 반영**
-  await saveSubjectsToFirebase(updatedList, updatedContents);
+    // **Firestore 전체 문서 업데이트**
+    await saveSubjectsToFirebase(selectedMode, updatedList, updatedContents);
+
+    setSubjectList(updatedList);
+    setSubjectContents(updatedContents);
+    setSelectedSubjectToEdit("");
+    setSubjectContent("");
+
+    alert(`${selectedSubjectToEdit} 과목이 삭제되었습니다.`);
+  } catch (error) {
+    console.error("Error deleting subject:", error);
+    alert("과목 삭제 중 오류가 발생했습니다.");
+  }
 };
 
   // 과정 생성
@@ -289,7 +336,7 @@ export default function Home() {
   setCourseSubjects(prev => ({ ...prev, [newCourseName]: selectedSubject }));
 
   // **Firestore 저장 추가**
-  await saveCourseToFirebase(newCourseName, newCoursePassword, newCourseTime, selectedSubject);
+  await saveCourseToFirebase(selectedMode!, newCourseName, newCoursePassword, newCourseTime, selectedSubject);
 
   setNewCourseName('');
   setNewCourseTime('');
@@ -320,7 +367,7 @@ export default function Home() {
 
   if (selectedCourse) {
     setTraineeListPerCourse(prev => ({ ...prev, [selectedCourse]: newList }));
-    await saveTraineesToFirebase(selectedCourse, newList);
+    await saveTraineesToFirebase(selectedMode!, selectedCourse, newList);
   }
 
   setTraineeTeam('');
@@ -336,7 +383,7 @@ export default function Home() {
     setTrainees(newList);
     if (selectedCourse) {
       setTraineeListPerCourse(prev => ({ ...prev, [selectedCourse]: newList }));
-      await saveTraineesToFirebase(selectedCourse, newList);
+      await saveTraineesToFirebase(selectedMode!, selectedCourse, newList);
     }
   };
 
@@ -344,7 +391,7 @@ export default function Home() {
     setTrainees([]);
     if (selectedCourse) {
       setTraineeListPerCourse(prev => ({ ...prev, [selectedCourse]: [] }));
-      await saveTraineesToFirebase(selectedCourse, []);
+      await saveTraineesToFirebase(selectedMode!, selectedCourse, []);
     }
   };
 
@@ -526,7 +573,8 @@ traineesInCourse.forEach((trainee, index) => {
     setCourseSubjects(updatedSubjects);
 
     // **Firebase 반영**
-    await deleteDoc(doc(db, "courses", course));
+    const collectionName = selectedMode === "domestic" ? "course_domestic" : "course_overseas";
+    await deleteDoc(doc(db, collectionName, course));
 
     alert(`${course} 과정이 삭제되었습니다.`);
   }
@@ -749,7 +797,8 @@ traineesInCourse.forEach((trainee, index) => {
                   });
 
                   // **Firebase 반영**
-                  await deleteDoc(doc(db, "courses", course));
+                 const collectionName = selectedMode === "domestic" ? "course_domestic" : "course_overseas";
+                  await deleteDoc(doc(db, collectionName, course));
 
                   alert(`${course} 과정이 삭제되었습니다.`);
                 }
