@@ -111,6 +111,8 @@ const saveTraineesToFirebase = async (courseName: string, trainees: Trainee[]) =
 
 // ---------- 메인 컴포넌트 ----------
 export default function Home() {
+  const [selectedMode, setSelectedMode] = useState<"domestic" | "overseas" | null>(null);
+
   const [screen, setScreen] = useState<'main' | 'adminHome' | 'createCourse' | 'editCourse' | 'instructor' | 'traineeList'>('main');
   const [showAdminAuth, setShowAdminAuth] = useState(false);
   const [adminCode, setAdminCode] = useState('');
@@ -531,6 +533,27 @@ traineesInCourse.forEach((trainee, index) => {
 };
 
   // UI 구성 시작
+  // 모드 선택 화면
+  if (!selectedMode) {
+    return (
+      <div className="flex flex-col items-center justify-center h-screen space-y-6">
+        <h1 className="text-2xl font-bold">모드를 선택하세요</h1>
+        <button
+          className="bg-blue-500 text-white px-6 py-3 rounded"
+          onClick={() => setSelectedMode("overseas")}
+        >
+          해외위탁 모드
+        </button>
+        <button
+          className="bg-green-500 text-white px-6 py-3 rounded"
+          onClick={() => setSelectedMode("domestic")}
+        >
+          국내 모드
+        </button>
+      </div>
+    );
+  }
+
   return (
     <div className="p-6 max-w-4xl mx-auto">
       {/* 관리자 인증 모달 */}
@@ -637,6 +660,16 @@ traineesInCourse.forEach((trainee, index) => {
             }}
           >
             Instructor Mode
+          </button>
+
+          <button
+            className="bg-gray-500 text-white px-4 py-2 rounded mt-4"
+            onClick={() => {
+              setSelectedMode(null);
+              setScreen('main');
+            }}
+          >
+            국내/해외 선택화면으로
           </button>
         </div>
       )}
@@ -756,7 +789,7 @@ traineesInCourse.forEach((trainee, index) => {
         />
         <input
           className="border p-2 w-full"
-          placeholder="업체용 비밀번호"
+          placeholder="업체 강사용 비밀번호"
           value={newCoursePassword}
           onChange={e => setNewCoursePassword(e.target.value)}
         />
@@ -838,7 +871,7 @@ traineesInCourse.forEach((trainee, index) => {
             onClick={() => setScreen('adminHome')}
           >
             뒤로가기
-          </button>
+          </button>       
         </div>
       )}
 
