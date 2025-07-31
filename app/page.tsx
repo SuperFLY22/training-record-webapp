@@ -118,7 +118,7 @@ export default function Home() {
 
   const [showInstructorAuth, setShowInstructorAuth] = useState(false);
   const [instructorCode, setInstructorCode] = useState('');
-
+ 
   const [courseList, setCourseList] = useState<string[]>([]);
   const [coursePasswords, setCoursePasswords] = useState<{ [course: string]: string }>({});
   const [courseCreatedDates, setCourseCreatedDates] = useState<{ [course: string]: string }>({});
@@ -156,6 +156,10 @@ export default function Home() {
   const [submittedDate, setSubmittedDate] = useState('');
   const [submissionTimestamp, setSubmissionTimestamp] = useState('');
   const [instructorSignature, setInstructorSignature] = useState<string>('');
+
+  const [submittedCourses, setSubmittedCourses] = useState<{ [courseName: string]: boolean }>({});
+
+   const [isSubmitted, setIsSubmitted] = useState(false);
 
   // ✅ 초기 subject 불러오기
   useEffect(() => {
@@ -272,9 +276,9 @@ export default function Home() {
   // 과정 생성
   const handleCreateCourse = async () => {
   if (!newCourseName || !newCourseTime || !newCoursePassword) {
-    return alert('과정명, 교육시간, 비밀번호를 모두 입력하세요.');
+    return alert("Please enter the course name, duration, and password.");
   }
-  if (!selectedSubject) return alert('과목명을 먼저 선택하세요.');
+  if (!selectedSubject) return alert("Please select a subject.");
 
   setCourseList(prev => [...prev, newCourseName]);
   setCoursePasswords(prev => ({ ...prev, [newCourseName]: newCoursePassword }));
@@ -294,27 +298,34 @@ export default function Home() {
 
   // ---------- 수강생 추가 ----------
     const handleAddTrainee = async () => {
-      if (!traineeTeam || !traineeId || !traineeName) {
-        return alert('수강자 소속, 사번, 이름을 모두 입력하세요.');
-      }
-      if (!traineePad.current || traineePad.current.isEmpty()) {
-        return alert('수강생 서명을 입력해주세요.');
-      }
-      const sigData = traineePad.current.toDataURL();
-      const newList = [...trainees, { team: traineeTeam, id: traineeId, name: traineeName, signature: sigData }];
+  // 🔹 추가된 부분 시작
+  if (trainees.length >= 15) {
+    return alert('You can register up to 15 participants only.');
+  }
+  // 🔹 추가된 부분 끝
 
-      setTrainees(newList);
+  if (!traineeTeam || !traineeId || !traineeName) {
+    return alert("Please enter the trainee's team, ID, and name.");
+  }
+  if (!traineePad.current || traineePad.current.isEmpty()) {
+    return alert("Please provide the trainee's signature.");
+  }
 
-      if (selectedCourse) {
-        setTraineeListPerCourse(prev => ({ ...prev, [selectedCourse]: newList }));
-        await saveTraineesToFirebase(selectedCourse, newList);
-      }
+  const sigData = traineePad.current.toDataURL();
+  const newList = [...trainees, { team: traineeTeam, id: traineeId, name: traineeName, signature: sigData }];
 
-      setTraineeTeam('');
-      setTraineeId('');
-      setTraineeName('');
-      traineePad.current.clear();
-    };
+  setTrainees(newList);
+
+  if (selectedCourse) {
+    setTraineeListPerCourse(prev => ({ ...prev, [selectedCourse]: newList }));
+    await saveTraineesToFirebase(selectedCourse, newList);
+  }
+
+  setTraineeTeam('');
+  setTraineeId('');
+  setTraineeName('');
+  traineePad.current.clear();
+};
 
   // ---------- 수강생 관리 ----------
   // 수강생 목록 보기
@@ -339,26 +350,28 @@ export default function Home() {
     // 서명 후 제출
     const handleSubmit = () => {
       if (!instructorCompany || !instructorId || !instructorName) {
-        return alert('회사명, 사번, 이름을 입력하세요.');
+        return alert('Please enter the company name, employee ID, and name.');
       }
       if (trainees.length === 0) {
-        return alert('수강자가 최소 1명 이상 필요합니다.');
+        return alert('At least one trainee is required.');
       }
       if (!instructorPad.current || instructorPad.current.isEmpty()) {
-        return alert('서명 패드를 채워주세요.');
+        return alert('Please provide the instructor\'s signature.');
       }
       if (!lectureDate) {
-        alert("강의 날짜가 입력되지 않았습니다.");
+        alert("Please enter the lecture date.");
         return;
       }
 
       // ✅ 서명 저장
       const sigData = instructorPad.current.toDataURL();
-      setInstructorSignature(sigData); // 상태 저장
-
+      setInstructorSignature(sigData);
       setSubmissionTimestamp(new Date().toLocaleString());
-      instructorPad.current.clear(); // 강사 서명 초기화
-      alert('제출되었습니다. 이제 엑셀 다운로드가 가능합니다.');
+      instructorPad.current.clear();
+
+      setIsSubmitted(true);   // ✅ 제출 후 다운로드 가능하도록 상태 변경
+      setSubmittedCourses(prev => ({ ...prev, [selectedCourse]: true })); // ✅ 추가
+      alert('SESSION SUBMITTED!');
     };
 
   // 엑셀 파일로 내보내기
@@ -625,17 +638,6 @@ traineesInCourse.forEach((trainee, index) => {
           >
             Instructor Mode
           </button>
-
-          {/* ✅ Tailwind 색상 테스트 버튼 */}
-          <button className="bg-red-500 text-white px-4 py-2 rounded">
-            빨간 버튼
-          </button>
-          <button className="bg-green-500 text-white px-4 py-2 rounded">
-            초록 버튼
-          </button>
-          <button className="bg-blue-500 text-white px-4 py-2 rounded">
-            파란 버튼
-          </button>     
         </div>
       )}
 
@@ -672,12 +674,16 @@ traineesInCourse.forEach((trainee, index) => {
           </div>
           </div>
           <div className="flex space-x-2">
+           {submittedCourses[course] ? (
             <button
               className="bg-blue-500 text-white px-3 py-1 rounded text-sm"
               onClick={() => generateCourseExcel(course)}
             >
               다운로드
             </button>
+          ) : (
+            <span className="text-gray-500 text-sm">제출 전</span>
+          )}
             <button
               className="bg-red-500 text-white px-3 py-1 rounded text-sm"
               onClick={async () => {
@@ -848,7 +854,8 @@ traineesInCourse.forEach((trainee, index) => {
             <input className="border p-2 w-mt2" placeholder="Name" value={instructorName} onChange={e => setInstructorName(e.target.value)} />
             <input className="border p-2 w-mt2" placeholder="Location" value={instructorLocation} onChange={e => setInstructorLocation(e.target.value)} />
             <label className="block">Signature</label>
-            <canvas ref={instructorSigRef} className="border w-full max-w-md aspect-square" />
+            <canvas ref={instructorSigRef}  className="border-2 border-gray-700 bg-white w-full max-w-md aspect-square rounded"
+/>
             <button className="bg-gray-400 text-white w-full py-2 rounded" onClick={() => instructorPad.current?.clear()}>Signature Reset</button>
           </div>
 
@@ -858,7 +865,8 @@ traineesInCourse.forEach((trainee, index) => {
             <input className="border p-2 w-mt2" placeholder="Employee ID" value={traineeId} onChange={e => setTraineeId(e.target.value)} />
             <input className="border p-2 w-mt2" placeholder="Name" value={traineeName} onChange={e => setTraineeName(e.target.value)} />
             <label className="block">Signature</label>
-            <canvas ref={traineeSigRef} className="border w-full max-w-md aspect-square" />
+            <canvas ref={traineeSigRef}  className="border-2 border-gray-700 bg-white w-full max-w-md aspect-square rounded"
+/>
             <button className="bg-gray-400 text-white w-full py-2 rounded" onClick={() => traineePad.current?.clear()}>Signature Reset</button>
             <button className="bg-green-500 text-white w-full py-2 rounded" onClick={handleAddTrainee}>Add Trainee</button>
           </div>
