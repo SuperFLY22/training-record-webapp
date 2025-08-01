@@ -7,6 +7,7 @@ import { saveAs } from 'file-saver';
 
 import { collection, getDocs, doc, setDoc, getDoc, deleteDoc, updateDoc } from "firebase/firestore";
 import { db } from "../firebase";
+import JSZip from "jszip";
 
 type Trainee = {
   team: string;
@@ -63,7 +64,8 @@ const saveCourseToFirebase = async (
   name: string,
   password: string,
   time: string,
-  subjectName: string
+  subjectName: string,
+  traineePassword: string
 ) => {
   try {
     await setDoc(
@@ -72,8 +74,9 @@ const saveCourseToFirebase = async (
         subject: subjectName,
         time: time,
         password: password,
+        traineePassword: traineePassword,
         createdDate: new Date().toLocaleDateString(),
-        trainees: []   // 초기 trainee 리스트
+        trainees: [] 
       }
     );
   } catch (error) {
@@ -82,15 +85,16 @@ const saveCourseToFirebase = async (
 };
 
     const loadCoursesFromFirebase = async (
-  mode: "domestic" | "overseas",
-  setCourseList: Function,
-  setCoursePasswords: Function,
-  setCourseTimePerCourse: Function,
-  setCourseCreatedDates: Function,
-  setTraineeListPerCourse: Function,
-  setCourseSubjects: Function
+      mode: "domestic" | "overseas",
+      setCourseList: Function,
+      setCoursePasswords: Function,
+      setCourseTimePerCourse: Function,
+      setCourseCreatedDates: Function,
+      setTraineeListPerCourse: Function,
+      setCourseSubjects: Function,
+      setTraineePasswords: Function,
+      setSubmittedCourses: Function
 ) => {
-  try {
     const collectionName = mode === "domestic" ? "course_domestic" : "course_overseas";
     const snapshot = await getDocs(collection(db, collectionName));
 
@@ -100,16 +104,21 @@ const saveCourseToFirebase = async (
     const createdDates: { [key: string]: string } = {};
     const traineeMap: { [key: string]: Trainee[] } = {};
     const subjects: { [key: string]: string } = {};
+    const traineePwMap: { [key: string]: string } = {};
+    const submittedMap: { [key: string]: boolean } = {};
 
     snapshot.forEach((docSnap) => {
       const data = docSnap.data();
       const courseName = docSnap.id;
+
       courseNames.push(courseName);
       passwords[courseName] = data.password || "";
       times[courseName] = data.time || "";
       createdDates[courseName] = data.createdDate || "";
       traineeMap[courseName] = data.trainees || [];
       subjects[courseName] = data.subject || "";
+      traineePwMap[courseName] = data.traineePassword ||"";
+      submittedMap[courseName] = !!data.submitted;
     });
 
     setCourseList(courseNames);
@@ -118,9 +127,8 @@ const saveCourseToFirebase = async (
     setCourseCreatedDates(createdDates);
     setTraineeListPerCourse(traineeMap);
     setCourseSubjects(subjects);
-  } catch (error) {
-    console.error("Error loading courses:", error);
-  }
+    setTraineePasswords(traineePwMap);
+    setSubmittedCourses(submittedMap);
 };
 
   const saveTraineesToFirebase = async (
@@ -140,13 +148,19 @@ const saveCourseToFirebase = async (
 export default function Home() {
   const [selectedMode, setSelectedMode] = useState<"domestic" | "overseas" | null>(null);
 
-  const [screen, setScreen] = useState<'main' | 'adminHome' | 'createCourse' | 'editCourse' | 'instructor' | 'traineeList'>('main');
+  const [screen, setScreen] = useState<
+  'main' | 'adminHome' | 'createCourse' | 'editCourse' | 'instructor' | 'traineeList' | 'traineeMode'
+>('main');
   const [showAdminAuth, setShowAdminAuth] = useState(false);
   const [adminCode, setAdminCode] = useState('');
   const ADMIN_PASSWORD = '1234';
 
   const [showInstructorAuth, setShowInstructorAuth] = useState(false);
   const [instructorCode, setInstructorCode] = useState('');
+  const [showTraineeAuth, setShowTraineeAuth] = useState(false);
+  const [traineeCode, setTraineeCode] = useState('');
+  const [traineePasswords, setTraineePasswords] = useState<{ [course: string]: string }>({});
+
  
   const [courseList, setCourseList] = useState<string[]>([]);
   const [coursePasswords, setCoursePasswords] = useState<{ [course: string]: string }>({});
@@ -201,7 +215,9 @@ export default function Home() {
       setCourseTimePerCourse,
       setCourseCreatedDates,
       setTraineeListPerCourse,
-      setCourseSubjects
+      setCourseSubjects,
+      setTraineePasswords,
+      setSubmittedCourses
     );
   }
 }, [selectedMode]);
@@ -237,17 +253,36 @@ export default function Home() {
     } else {
       setTrainees([]);
     }
-
-    // 🔹 기존 초기화 항목
+    
+    // 🔹 강사 입력값 초기화
     setInstructorCompany('');
     setInstructorId('');
     setInstructorName('');
     setSubmissionTimestamp('');
-
-    // 🔹 추가 초기화 항목
     setInstructorLocation('');
     setLectureDate('');
     setSubmittedDate('');
+  }
+    
+ // TraineeMode 화면 진입 시 초기화 
+  if (screen === 'traineeMode') {
+    if (traineeSigRef.current) {
+      traineePad.current = new SignaturePad(traineeSigRef.current);
+      resizeCanvas(traineeSigRef.current);
+      traineePad.current.clear();
+    }
+
+    // 🔹 기존 등록된 수강생 불러오기
+    if (selectedCourse && traineeListPerCourse[selectedCourse]) {
+      setTrainees(traineeListPerCourse[selectedCourse]);
+    } else {
+      setTrainees([]);
+    }
+
+    // 🔹 입력칸 초기화
+    setTraineeTeam('');
+    setTraineeId('');
+    setTraineeName('');
   }
 }, [screen, selectedCourse]);
 
@@ -336,6 +371,8 @@ export default function Home() {
   setCourseSubjects(prev => ({ ...prev, [newCourseName]: selectedSubject }));
 
   // **Firestore 저장 추가**
+  const traineePassword = traineePasswords[newCourseName] || '';
+  await saveCourseToFirebase(selectedMode!, newCourseName, newCoursePassword, newCourseTime, selectedSubject, traineePassword);
   await saveCourseToFirebase(selectedMode!, newCourseName, newCoursePassword, newCourseTime, selectedSubject);
 
   setNewCourseName('');
@@ -347,12 +384,6 @@ export default function Home() {
 
   // ---------- 수강생 추가 ----------
     const handleAddTrainee = async () => {
-  // 🔹 추가된 부분 시작
-  if (trainees.length >= 15) {
-    return alert('You can register up to 15 participants only.');
-  }
-  // 🔹 추가된 부분 끝
-
   if (!traineeTeam || !traineeId || !traineeName) {
     return alert("Please enter the trainee's team, ID, and name.");
   }
@@ -397,19 +428,21 @@ export default function Home() {
 
 
     // 서명 후 제출
-    const handleSubmit = () => {
-      if (!instructorCompany || !instructorId || !instructorName) {
-        return alert('Please enter the company name, employee ID, and name.');
+    const handleSubmit = async () => {
+      if (!instructorCompany || !instructorId || !instructorName || !instructorLocation) {
+      return alert('Please enter the company name, employee ID, name and location.');
       }
       if (trainees.length === 0) {
-        return alert('At least one trainee is required.');
+      return alert('At least one trainee is required.');
       }
       if (!instructorPad.current || instructorPad.current.isEmpty()) {
-        return alert('Please provide the instructor\'s signature.');
+      return alert("Please provide the instructor's signature.");
       }
       if (!lectureDate) {
-        alert("Please enter the lecture date.");
-        return;
+      return alert("Please enter the lecture date.");
+      }
+      if (!submittedDate) {
+      return alert("Please enter the submitted date.");
       }
 
       // ✅ 서명 저장
@@ -418,8 +451,15 @@ export default function Home() {
       setSubmissionTimestamp(new Date().toLocaleString());
       instructorPad.current.clear();
 
-      setIsSubmitted(true);   // ✅ 제출 후 다운로드 가능하도록 상태 변경
-      setSubmittedCourses(prev => ({ ...prev, [selectedCourse]: true })); // ✅ 추가
+      setIsSubmitted(true);
+      setSubmittedCourses(prev => ({ ...prev, [selectedCourse]: true }));
+
+      // 🔹 Firebase에 submitted 상태 업데이트
+      const collectionName = selectedMode === "domestic" ? "course_domestic" : "course_overseas";
+      await updateDoc(doc(db, collectionName, selectedCourse), {
+        submitted: true,
+      });
+
       alert('SESSION SUBMITTED!');
     };
 
@@ -481,76 +521,81 @@ export default function Home() {
 };
 
   // TODO: 엑셀 생성 함수
-  const generateCourseExcel = async (course: string) => {
-    if (!course) return;
+const generateCourseExcel = async (course: string) => {
+  if (!course) return;
 
+  const traineesInCourse = traineeListPerCourse[course] || trainees;
+  if (!traineesInCourse || traineesInCourse.length === 0) {
+    alert("No trainees registered.");
+    return;
+  }
+
+  const chunkSize = 15;
+  const chunks: Trainee[][] = [];
+  for (let i = 0; i < traineesInCourse.length; i += chunkSize) {
+    chunks.push(traineesInCourse.slice(i, i + chunkSize));
+  }
+
+  const zip = new JSZip();
+
+  for (let index = 0; index < chunks.length; index++) {
     const workbook = new ExcelJS.Workbook();
-    const response = await fetch('/template.xlsx');
+    const response = await fetch("/template.xlsx");
     const arrayBuffer = await response.arrayBuffer();
     await workbook.xlsx.load(arrayBuffer);
     const worksheet = workbook.worksheets[0];
 
-      // 강사/수강생 데이터는 현재 상태값을 기반으로 가져옴
+    // 기본 정보
     const subjectName = courseSubjects[course] || selectedSubject || course;
-    const subjectContent = subjectContents[subjectName] || '';
-    const courseTime = courseTimePerCourse[course] || newCourseTime || '';
+    const subjectContent = subjectContents[subjectName] || "";
+    const courseTime = courseTimePerCourse[course] || newCourseTime || "";
     const dateStr = lectureDate || new Date().toLocaleDateString();
-    const traineesInCourse = traineeListPerCourse[course] || trainees;
 
+    worksheet.getCell("B3").value = subjectName;
+    worksheet.getCell("B4").value = subjectContent;
+    worksheet.getCell("F5").value = courseTime;
+    worksheet.getCell("B5").value = dateStr;
+    worksheet.getCell("C27").value = submittedDate || new Date().toLocaleDateString();
+    worksheet.getCell("I5").value = instructorLocation;
+    worksheet.getCell("B7").value = instructorCompany;
+    worksheet.getCell("F7").value = instructorId;
+    worksheet.getCell("I7").value = instructorName;
+    worksheet.getCell("F8").value = course;
 
-    // 📌 기본 정보 입력
-    worksheet.getCell('B3').value = subjectName;
-    worksheet.getCell('B4').value = subjectContent;
-    worksheet.getCell('F5').value = courseTime;
-    worksheet.getCell('B5').value = dateStr;
-    worksheet.getCell('C27').value = submittedDate || new Date().toLocaleDateString(); // 제출일
-    worksheet.getCell('I5').value = instructorLocation; // 위치
+    // 강사 서명
+    if (instructorSignature) {
+      const image = workbook.addImage({ base64: instructorSignature, extension: "png" });
+      worksheet.addImage(image, {
+        tl: { col: 8, row: 26 },
+        ext: { width: 287, height: 109 },
+        editAs: "oneCell",
+      });
+    }
 
-    worksheet.getCell('B7').value = instructorCompany;
-    worksheet.getCell('F7').value = instructorId;
-    worksheet.getCell('I7').value = instructorName;
+    // Trainee 15명 (또는 마지막 chunk)
+    chunks[index].forEach((trainee, i) => {
+      const row = 10 + i;
+      worksheet.getCell(`A${row}`).value = trainee.team;
+      worksheet.getCell(`C${row}`).value = trainee.id;
+      worksheet.getCell(`E${row}`).value = trainee.name;
 
-    worksheet.getCell('F8').value = course;  // 업체명(과정명) 입력
-
-// ✅ 강사 서명 이미지 삽입
-if (instructorSignature) {
-  const image = workbook.addImage({ base64: instructorSignature, extension: 'png' });
-
-  // 행 높이도 설정 (엑셀에서 보기 좋게)
-  worksheet.getRow(27).height = 81.9;
-
-  worksheet.addImage(image, {
-    tl: { col: 8, row: 26 }, // I27 셀
-    ext: { width: 287, height: 109 },
-    editAs: 'oneCell',
-  });
-}
-
-// 🔄 수강생 정보 + 서명 이미지 삽입
-traineesInCourse.forEach((trainee, index) => {
-  const row = 10 + index;
-
-  worksheet.getCell(`A${row}`).value = trainee.team;
-  worksheet.getCell(`C${row}`).value = trainee.id;
-  worksheet.getCell(`E${row}`).value = trainee.name;
-
-  // 행 높이 설정
-  worksheet.getRow(row).height = 24.9;
-
-  if (trainee.signature) {
-    const image = workbook.addImage({ base64: trainee.signature, extension: 'png' });
-
-    worksheet.addImage(image, {
-      tl: { col: 7, row: row - 1 }, // H열 (0-indexed)
-      ext: { width: 184, height: 33 },
-      editAs: 'oneCell',
+      if (trainee.signature) {
+        const img = workbook.addImage({ base64: trainee.signature, extension: "png" });
+        worksheet.addImage(img, {
+          tl: { col: 7, row: row - 1 },
+          ext: { width: 184, height: 33 },
+          editAs: "oneCell",
+        });
+      }
     });
-  }
-});
 
     const buffer = await workbook.xlsx.writeBuffer();
-    saveAs(new Blob([buffer]), `${course}_전체정보.xlsx`);
-  };
+    zip.file(`${course}_TrainingRecord_Part${index + 1}.xlsx`, buffer);
+  }
+
+  const content = await zip.generateAsync({ type: "blob" });
+  saveAs(content, `${course}_TrainingRecords.zip`);
+};
 
   // 과정 삭제 기능
   const handleDeleteCourse = async (course: string) => {
@@ -585,7 +630,11 @@ traineesInCourse.forEach((trainee, index) => {
   if (!selectedMode) {
     return (
       <div className="flex flex-col items-center justify-center h-screen space-y-6">
-        <h1 className="text-2xl font-bold">Select Domestic / Overseas Mode</h1>
+        <h1 className="text-2xl font-bold">
+          Select <span className="text-blue-500 font-extrabold">Overseas</span> /
+          <span className="text-green-500 font-extrabold"> Domestic</span> Mode
+        </h1>
+
         <button
           className="bg-blue-500 text-white px-6 py-3 rounded"
           onClick={() => setSelectedMode("overseas")}
@@ -681,6 +730,44 @@ traineesInCourse.forEach((trainee, index) => {
         </div>
       )}
 
+      {/* Trainee 인증 모달 */}
+      {showTraineeAuth && (
+        <div className="fixed inset-0 bg-black bg-opacity-40 flex items-center justify-center">
+          <div className="bg-white p-6 rounded shadow-md w-80">
+            <h2 className="text-lg font-bold mb-4">Trainee Password</h2>
+            <input
+              type="password"
+              className="border p-2 w-full mb-4"
+              placeholder="Enter password"
+              value={traineeCode}
+              onChange={e => setTraineeCode(e.target.value)}
+            />
+            <div className="flex justify-end space-x-2">
+              <button
+                className="bg-gray-300 px-4 py-2 rounded"
+                onClick={() => { setShowTraineeAuth(false); setTraineeCode(''); }}
+              >
+                Cancel
+              </button>
+              <button
+                className="bg-green-500 text-white px-4 py-2 rounded"
+                onClick={() => {
+                  if (traineePasswords[selectedCourse] === traineeCode) {
+                    setShowTraineeAuth(false);
+                    setTraineeCode('');
+                    setScreen('traineeMode');
+                  } else {
+                    alert('Incorrect trainee password.');
+                  }
+                }}
+              >
+                Ok
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* 메인 화면 */}
       {screen === 'main' && (
         <div className="flex flex-col items-center space-y-8 mt-10">
@@ -703,20 +790,39 @@ traineesInCourse.forEach((trainee, index) => {
             </option>
           ))}
           </select>
+          
+        {/* Instructor Mode 버튼 */}
+        <button
+          className="w-64 h-16 bg-blue-500 text-white text-xl rounded"
+          onClick={() => {
+            if (!selectedCourse) {
+              alert('Please select a course first.');
+              return;
+            }
+            // 국내/해외 모드 동일하게 인증 모달 실행
+            setShowAdminAuth(false);
+            setShowInstructorAuth(true);
+          }}
+        >
+          Instructor Mode
+        </button>
 
+        {/* Domestic 모드 전용 Trainee Mode 버튼 */}
+        {selectedMode === 'domestic' && (
           <button
-            className="w-64 h-16 bg-blue-500 text-white text-xl rounded"
+            className="w-64 h-16 bg-green-500 text-white text-xl rounded"
             onClick={() => {
               if (!selectedCourse) {
                 alert('Please select a course first.');
                 return;
               }
-              setShowAdminAuth(false);
-              setShowInstructorAuth(true);
+              setShowTraineeAuth(true);
             }}
           >
-            Instructor Mode
+            Trainee Mode
           </button>
+        )}
+
 
           <button
             className="bg-gray-500 text-white px-4 py-2 rounded mt-4"
@@ -725,7 +831,7 @@ traineesInCourse.forEach((trainee, index) => {
               setScreen('main');
             }}
           >
-             Move to Fist Page
+             Move to First Page
           </button>
         </div>
       )}
@@ -760,6 +866,13 @@ traineesInCourse.forEach((trainee, index) => {
           </div>
           <div className="text-sm text-gray-500">
             생성일: {courseCreatedDates[course] || 'N/A'}
+          </div>
+           {/* --- 추가 부분: 강사 / 수강생 비밀번호 --- */}
+          <div className="text-sm text-gray-700">
+            강사 비밀번호: <span className="font-mono">{coursePasswords[course] || '-'}</span>
+          </div>
+          <div className="text-sm text-gray-700">
+            수강생 비밀번호: <span className="font-mono">{traineePasswords[course] || '-'}</span>
           </div>
           </div>
           <div className="flex space-x-2">
@@ -850,6 +963,14 @@ traineesInCourse.forEach((trainee, index) => {
           value={newCoursePassword}
           onChange={e => setNewCoursePassword(e.target.value)}
         />
+        <input
+          className="border p-2 w-full"
+          placeholder="수강생모드 비밀번호"
+          value={traineePasswords[newCourseName] || ''}
+          onChange={e =>
+            setTraineePasswords(prev => ({ ...prev, [newCourseName]: e.target.value }))
+          }
+        />
         <select
           className="border p-2 w-full"
           value={selectedSubject}
@@ -932,122 +1053,265 @@ traineesInCourse.forEach((trainee, index) => {
         </div>
       )}
 
-    {/* Step 4: 강사 화면 */}
-      {screen === 'instructor' && (
-        <div className="mt-8 space-y-6">
-          <h2 className="text-2xl font-bold text-center">Instructor Mode</h2>
+      {/* Step 4-1: 국내 강사 화면 */}
+      {screen === 'instructor' && selectedMode === 'domestic' && (
+      <div className="mt-8 space-y-6">
+        <h2 className="text-2xl font-bold text-center">Instructor Mode (Domestic)</h2>
 
-          <div className="bg-gray-100 p-4 rounded space-y-4">
-            <h3 className="text-lg font-semibold">Instructor INFO</h3>
-            <input className="border p-2 w-mt2" placeholder="Company Name" value={instructorCompany} onChange={e => setInstructorCompany(e.target.value)} />
-            <input className="border p-2 w-mt2" placeholder="Employee ID" value={instructorId} onChange={e => setInstructorId(e.target.value)} />
-            <input className="border p-2 w-mt2" placeholder="Name" value={instructorName} onChange={e => setInstructorName(e.target.value)} />
-            <input className="border p-2 w-mt2" placeholder="Location" value={instructorLocation} onChange={e => setInstructorLocation(e.target.value)} />
-            <label className="block">Signature</label>
-            <canvas ref={instructorSigRef}  className="border-2 border-gray-700 bg-white w-full max-w-md aspect-square rounded"
-/>
-            <button className="bg-gray-400 text-white w-full py-2 rounded" onClick={() => instructorPad.current?.clear()}>Signature Reset</button>
+        {/* 강사 정보 입력 */}
+        <div className="bg-gray-100 p-4 rounded space-y-4">
+          <h3 className="text-lg font-semibold">Instructor INFO</h3>
+          <input className="border p-2 w-mt2" placeholder="Company Name" value={instructorCompany} onChange={e => setInstructorCompany(e.target.value)} />
+          <input className="border p-2 w-mt2" placeholder="Employee ID" value={instructorId} onChange={e => setInstructorId(e.target.value)} />
+          <input className="border p-2 w-mt2" placeholder="Name" value={instructorName} onChange={e => setInstructorName(e.target.value)} />
+          <input className="border p-2 w-mt2" placeholder="Location" value={instructorLocation} onChange={e => setInstructorLocation(e.target.value)} />
+          <label className="block">Signature</label>
+          <canvas ref={instructorSigRef} className="border-2 border-gray-700 bg-white w-full max-w-md aspect-square rounded" />
+          <button className="bg-gray-400 text-white w-full py-2 rounded" onClick={() => instructorPad.current?.clear()}>Signature Reset</button>
+        </div>
+
+        {/* 수강생 목록(조회 전용) */}
+        <div className="bg-white p-4 rounded border text-center">
+          <h3 className="text-lg font-semibold mb-2">Trainee List (Read Only)</h3>
+          <ul className="space-y-2 border p-4 rounded bg-white text-left">
+            {trainees.length === 0 ? (
+              <p>No trainees registered.</p>
+            ) : (
+              trainees.map((t, idx) => (
+                <li key={idx}>{t.team} / {t.id} / {t.name}</li>
+              ))
+            )}
+          </ul>
+          {/* 완료 학생 수 표시 */}
+        <p className="text-xl font-bold mt-4">
+          Completed: {trainees.length}
+        </p>
+        </div>
+
+        {/* 날짜 & 제출 */}
+        <div className="flex space-x-2 items-end">
+          <div className="flex-1">
+            <input className="border p-2 w-full" placeholder="Lecture_Date" value={lectureDate} onChange={e => setLectureDate(e.target.value)} />
+            <input className="border p-2 w-full" placeholder="Submit_Date" value={submittedDate} onChange={e => setSubmittedDate(e.target.value)} />
           </div>
+          <button className="bg-yellow-400 text-black w-1/2 py-2 rounded" onClick={handleSubmit}>Submit</button>
+        </div>
 
-          <div className="bg-gray-100 p-4 rounded space-y-4">
-            <h3 className="text-lg font-semibold">Trainee INFO</h3>
-            <input className="border p-2 w-mt2" placeholder="Team" value={traineeTeam} onChange={e => setTraineeTeam(e.target.value)} />
-            <input className="border p-2 w-mt2" placeholder="Employee ID" value={traineeId} onChange={e => setTraineeId(e.target.value)} />
-            <input className="border p-2 w-mt2" placeholder="Name" value={traineeName} onChange={e => setTraineeName(e.target.value)} />
-            <label className="block">Signature</label>
-            <canvas ref={traineeSigRef}  className="border-2 border-gray-700 bg-white w-full max-w-md aspect-square rounded"
-/>
-            <button className="bg-gray-400 text-white w-full py-2 rounded" onClick={() => traineePad.current?.clear()}>Signature Reset</button>
-            <button className="bg-green-500 text-white w-full py-2 rounded" onClick={handleAddTrainee}>Add Trainee</button>
-          </div>
+        <button className="bg-gray-400 text-white w-full py-2 rounded mt-2" onClick={() => setScreen('main')}>
+          Main Menu
+        </button>
+      </div>
+    )}
 
-          <div className="bg-white p-4 rounded border text-center">
-            <h3 className="text-lg font-semibold mb-2">Trainee Status</h3>
-            <p className="text-xl">{trainees.length} Completed</p>
-            <button
-              className="bg-blue-500 text-white w-full py-2 rounded mt-2"
-              onClick={() => setScreen('traineeList')}
-            >
-              View All Trainees
-            </button>
-          </div>
+      {/* Step 4-2: 해외 강사 화면 */}
+      {screen === 'instructor' && selectedMode === 'overseas' && (
+      <div className="mt-8 space-y-6">
+        <h2 className="text-2xl font-bold text-center">Instructor Mode</h2>
 
-          <div className="flex space-x-2 items-end">
-            <div className="flex-1">
-              <label className="block font-medium mb-1">Lecture Date</label>
-              <input
-                type="text"
-                placeholder=""
-                className="border p-2 w-full"
-                value={lectureDate}
-                onChange={e => setLectureDate(e.target.value)}
-              />
-              <input
-                className="border p-2 w-full"
-                placeholder="SubmittedDate"
-                value={submittedDate}
-                onChange={e => setSubmittedDate(e.target.value)}
-              />
-            </div>
+        <div className="bg-gray-100 p-4 rounded space-y-4">
+          <h3 className="text-lg font-semibold">Instructor INFO</h3>
+          <input className="border p-2 w-mt2" placeholder="Company Name" value={instructorCompany} onChange={e => setInstructorCompany(e.target.value)} />
+          <input className="border p-2 w-mt2" placeholder="Employee ID" value={instructorId} onChange={e => setInstructorId(e.target.value)} />
+          <input className="border p-2 w-mt2" placeholder="Name" value={instructorName} onChange={e => setInstructorName(e.target.value)} />
+          <input className="border p-2 w-mt2" placeholder="Location" value={instructorLocation} onChange={e => setInstructorLocation(e.target.value)} />
+          <label className="block">Signature</label>
+          <canvas ref={instructorSigRef}  className="border-2 border-gray-700 bg-white w-full max-w-md aspect-square rounded"/>
+          <button className="bg-gray-400 text-white w-full py-2 rounded" onClick={() => instructorPad.current?.clear()}>Signature Reset</button>
+        </div>
 
-            <button
-              className="bg-yellow-400 text-black w-1/2 py-2 rounded"
-              onClick={handleSubmit}
-            >
-              Submit
-            </button>
-          </div>
+        <div className="bg-gray-100 p-4 rounded space-y-4">
+          <h3 className="text-lg font-semibold">Trainee INFO</h3>
+          <input className="border p-2 w-mt2" placeholder="Team" value={traineeTeam} onChange={e => setTraineeTeam(e.target.value)} />
+          <input className="border p-2 w-mt2" placeholder="Employee ID" value={traineeId} onChange={e => setTraineeId(e.target.value)} />
+          <input className="border p-2 w-mt2" placeholder="Name" value={traineeName} onChange={e => setTraineeName(e.target.value)} />
+          <label className="block">Signature</label>
+          <canvas ref={traineeSigRef}  className="border-2 border-gray-700 bg-white w-full max-w-md aspect-square rounded"/>
+          <button className="bg-gray-400 text-white w-full py-2 rounded" onClick={() => traineePad.current?.clear()}>Signature Reset</button>
+          <button className="bg-green-500 text-white w-full py-2 rounded" onClick={handleAddTrainee}>Add Trainee</button>
+        </div>
 
+        <div className="bg-white p-4 rounded border text-center">
+          <h3 className="text-lg font-semibold mb-2">Trainee Status</h3>
+          <p className="text-xl">{trainees.length} Completed</p>
           <button
-            className="bg-gray-400 text-white w-full py-2 rounded mt-2"
-            onClick={() => setScreen('main')}
+            className="bg-blue-500 text-white w-full py-2 rounded mt-2"
+            onClick={() => setScreen('traineeList')}
           >
-            Main Menu
+            View All Trainees
           </button>
         </div>
-      )}
+
+        <div className="flex space-x-2 items-end">
+          <div className="flex-1">
+            <input
+              className="border p-2 w-full"
+              placeholder="Lecture_Date"              
+              value={lectureDate}
+              onChange={e => setLectureDate(e.target.value)}
+            />
+            <input
+              className="border p-2 w-full"
+              placeholder="Submit_Date"
+              value={submittedDate}
+              onChange={e => setSubmittedDate(e.target.value)}
+            />
+          </div>
+          <button
+            className="bg-yellow-400 text-black w-1/2 py-2 rounded"
+            onClick={handleSubmit}
+          >
+            Submit
+          </button>
+        </div>
+
+        <button
+          className="bg-gray-400 text-white w-full py-2 rounded mt-2"
+          onClick={() => setScreen('main')}
+        >
+          Main Menu
+        </button>
+      </div>
+    )}
 
       {/* Step 5: Trainee List Screen */}
         {screen === 'traineeList' && (
         <div className="mt-8 space-y-6">
           <h2 className="text-2xl font-bold text-center">All Trainees</h2>
-
-      <ul className="space-y-2 border p-4 rounded bg-white">
-        {trainees.length === 0 ? (
-          <p>No trainees registered.</p>
-        ) : (
-          trainees.map((t, idx) => (
-            <li key={idx} className="flex justify-between items-center border-b pb-1">
-              <span>{t.team} / {t.id} / {t.name}</span>
+          <ul className="space-y-2 border p-4 rounded bg-white">
+            {trainees.length === 0 ? (
+              <p>No trainees registered.</p>
+            ) : (
+              trainees.map((t, idx) => (
+                <li key={idx} className="flex justify-between items-center border-b pb-1">
+                  <span>{t.team} / {t.id} / {t.name}</span>
+                  <button
+                    onClick={() => handleDeleteTrainee(idx)}
+                    className="text-sm text-red-500"
+                  >
+                    Delete
+                  </button>
+                </li>
+              ))
+            )}
+          </ul>
+            {trainees.length > 0 && (
               <button
-                onClick={() => handleDeleteTrainee(idx)}
-                className="text-sm text-red-500"
+                className="bg-red-500 text-white w-full py-2 rounded"
+                onClick={handleClearTrainees}
               >
-                Delete
+                Delete All Trainees
               </button>
-            </li>
-          ))
+            )}
+            <button
+              className="bg-gray-400 text-white w-full py-2 rounded"
+              onClick={() => setScreen('instructor')}
+            >
+              Back
+            </button>
+          </div>
         )}
-      </ul>
 
-    {/* ✅ 전체 삭제 버튼 추가 */}
-    {trainees.length > 0 && (
-      <button
-        className="bg-red-500 text-white w-full py-2 rounded"
-        onClick={handleClearTrainees}
-      >
-        Delete All Trainees
-      </button>
-    )}
+      {/* Step 6: Trainee Mode Screen */}
+      {screen === 'traineeMode' && (
+        <div className="mt-8 space-y-6">
+          <h2 className="text-2xl font-bold text-center">Trainee Mode (Domestic 전용)</h2>
 
-    <button
-      className="bg-gray-400 text-white w-full py-2 rounded"
-      onClick={() => setScreen('instructor')}
-    >
-      Back
-    </button>
-  </div>
-)}
+          <div className="bg-gray-100 p-4 rounded space-y-4">
+            <h3 className="text-lg font-semibold">Trainee INFO</h3>
+            <input
+              className="border p-2 w-full"
+              placeholder="Team"
+              value={traineeTeam}
+              onChange={e => setTraineeTeam(e.target.value)}
+            />
+            <input
+              className="border p-2 w-full"
+              placeholder="Employee ID"
+              value={traineeId}
+              onChange={e => setTraineeId(e.target.value)}
+            />
+            <input
+              className="border p-2 w-full"
+              placeholder="Name"
+              value={traineeName}
+              onChange={e => setTraineeName(e.target.value)}
+            />
+            <label className="block font-medium">Signature</label>
+            <canvas
+              ref={traineeSigRef}
+              className="border-2 border-gray-700 bg-white w-full max-w-md aspect-square rounded"
+            />
+            <button
+              className="bg-gray-400 text-white w-full py-2 rounded"
+              onClick={() => traineePad.current?.clear()}
+            >
+              Signature Reset
+            </button>
+            <button
+              className="bg-green-500 text-white w-full py-2 rounded"
+              onClick={async () => {
+                if (!traineeTeam || !traineeId || !traineeName) {
+                  alert("Please enter the trainee's team, ID, and name.");
+                  return;
+                }
+                if (!traineePad.current || traineePad.current.isEmpty()) {
+                  alert("Please provide the trainee's signature.");
+                  return;
+                }
+
+                const sigData = traineePad.current.toDataURL();
+                const newList = [...trainees, { team: traineeTeam, id: traineeId, name: traineeName, signature: sigData }];
+
+                setTrainees(newList);
+                if (selectedCourse) {
+                  setTraineeListPerCourse(prev => ({ ...prev, [selectedCourse]: newList }));
+                  await saveTraineesToFirebase(selectedMode!, selectedCourse, newList);
+                }
+
+                setTraineeTeam('');
+                setTraineeId('');
+                setTraineeName('');
+                traineePad.current.clear();
+              }}
+            >
+              Add Trainee
+            </button>
+          </div>
+
+          <div className="bg-white p-4 rounded border text-center">
+            <h3 className="text-lg font-semibold mb-2">Trainee Status</h3>
+            <p className="text-xl mb-4">{trainees.length} Completed</p>
+
+            {/* 수강생 목록 + 개별 삭제 버튼 */}
+            <ul className="space-y-2 border p-4 rounded bg-white text-left">
+              {trainees.length === 0 ? (
+                <p>No trainees registered.</p>
+              ) : (
+                trainees.map((t, idx) => (
+                  <li key={idx} className="flex justify-between items-center border-b pb-1">
+                    <span>{t.team} / {t.id} / {t.name}</span>
+                    <button
+                      onClick={() => handleDeleteTrainee(idx)}
+                      className="text-sm text-red-500"
+                    >
+                      Delete
+                    </button>
+                  </li>
+                ))
+              )}
+            </ul>
+          </div>
+
+          {/* 메인 메뉴 버튼은 기존 위치 유지 */}
+          <button
+            className="bg-gray-400 text-white w-full py-2 rounded"
+            onClick={() => setScreen('main')}
+          >
+            Main Menu
+          </button>
+
+        </div>
+      )}
     </div>
   );
-} 
+}
