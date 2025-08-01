@@ -373,8 +373,7 @@ export default function Home() {
   // **Firestore 저장 추가**
   const traineePassword = traineePasswords[newCourseName] || '';
   await saveCourseToFirebase(selectedMode!, newCourseName, newCoursePassword, newCourseTime, selectedSubject, traineePassword);
-  await saveCourseToFirebase(selectedMode!, newCourseName, newCoursePassword, newCourseTime, selectedSubject);
-
+  
   setNewCourseName('');
   setNewCourseTime('');
   setNewCoursePassword('');
