@@ -194,6 +194,8 @@ export default function Home() {
   const traineeSigRef = useRef<HTMLCanvasElement | null>(null);
   const traineePad = useRef<SignaturePad | null>(null);
   const [trainees, setTrainees] = useState<Trainee[]>([]);
+  const [duplicateId, setDuplicateId] = useState(false);
+
 
   const [lectureDate, setLectureDate] = useState('');
   const [submittedDate, setSubmittedDate] = useState('');
@@ -1118,15 +1120,60 @@ const generateCourseExcel = async (course: string) => {
           <button className="bg-gray-400 text-white w-full py-2 rounded" onClick={() => instructorPad.current?.clear()}>Signature Reset</button>
         </div>
 
+        {/* Step 4-3: 해외 수강생 화면 */}
         <div className="bg-gray-100 p-4 rounded space-y-4">
           <h3 className="text-lg font-semibold">Trainee INFO</h3>
           <input className="border p-2 w-mt2" placeholder="Team" value={traineeTeam} onChange={e => setTraineeTeam(e.target.value)} />
-          <input className="border p-2 w-mt2" placeholder="Employee ID" value={traineeId} onChange={e => setTraineeId(e.target.value)} />
+          <input
+            className={`border p-2 w-full ${duplicateId ? 'border-red-500' : ''}`}
+            placeholder="Employee ID"
+            value={traineeId}
+            onChange={e => {
+              const val = e.target.value;
+              setTraineeId(val);
+              setDuplicateId(trainees.some(t => t.id === val));
+            }}
+          />
+          {duplicateId && <p className="text-red-500 text-sm">Employee ID already registered.</p>}
+
           <input className="border p-2 w-mt2" placeholder="Name" value={traineeName} onChange={e => setTraineeName(e.target.value)} />
           <label className="block">Signature</label>
           <canvas ref={traineeSigRef}  className="border-2 border-gray-700 bg-white w-full max-w-md aspect-square rounded"/>
           <button className="bg-gray-400 text-white w-full py-2 rounded" onClick={() => traineePad.current?.clear()}>Signature Reset</button>
-          <button className="bg-green-500 text-white w-full py-2 rounded" onClick={handleAddTrainee}>Add Trainee</button>
+          <button
+            className={`bg-green-500 text-white w-full py-2 rounded ${duplicateId ? 'opacity-50 cursor-not-allowed' : ''}`}
+            disabled={duplicateId}
+            onClick={async () => {
+              if (duplicateId) {
+                alert('Employee ID already registered.');
+                return;
+              }
+              if (!traineeTeam || !traineeId || !traineeName) {
+                alert("Please enter the trainee's team, ID, and name.");
+                return;
+              }
+              if (!traineePad.current || traineePad.current.isEmpty()) {
+                alert("Please provide the trainee's signature.");
+                return;
+              }
+
+              const sigData = traineePad.current.toDataURL();
+              const newList = [...trainees, { team: traineeTeam, id: traineeId, name: traineeName, signature: sigData }];
+
+              setTrainees(newList);
+              if (selectedCourse) {
+                setTraineeListPerCourse(prev => ({ ...prev, [selectedCourse]: newList }));
+                await saveTraineesToFirebase(selectedMode!, selectedCourse, newList);
+              }
+
+              setTraineeTeam('');
+              setTraineeId('');
+              setTraineeName('');
+              traineePad.current.clear();
+            }}
+          >
+            Add Trainee
+          </button>
         </div>
 
         <div className="bg-white p-4 rounded border text-center">
@@ -1164,8 +1211,14 @@ const generateCourseExcel = async (course: string) => {
         </div>
 
         <button
-          className="bg-gray-400 text-white w-full py-2 rounded mt-2"
-          onClick={() => setScreen('main')}
+          className="bg-gray-400 text-white w-full py-2 rounded"
+          onClick={() => {
+            setTraineeTeam('');
+            setTraineeId('');
+            setTraineeName('');
+            if (traineePad.current) traineePad.current.clear();
+            setScreen('main');
+          }}
         >
           Main Menu
         </button>
@@ -1224,11 +1277,17 @@ const generateCourseExcel = async (course: string) => {
               onChange={e => setTraineeTeam(e.target.value)}
             />
             <input
-              className="border p-2 w-full"
-              placeholder="Employee ID"
-              value={traineeId}
-              onChange={e => setTraineeId(e.target.value)}
-            />
+            className={`border p-2 w-full ${duplicateId ? 'border-red-500' : ''}`}
+            placeholder="Employee ID"
+            value={traineeId}
+            onChange={e => {
+              const val = e.target.value;
+              setTraineeId(val);
+              setDuplicateId(trainees.some(t => t.id === val));
+            }}
+          />
+          {duplicateId && <p className="text-red-500 text-sm">Employee ID already registered.</p>}
+
             <input
               className="border p-2 w-full"
               placeholder="Name"
@@ -1247,8 +1306,13 @@ const generateCourseExcel = async (course: string) => {
               Signature Reset
             </button>
             <button
-              className="bg-green-500 text-white w-full py-2 rounded"
+              className={`bg-green-500 text-white w-full py-2 rounded ${duplicateId ? 'opacity-50 cursor-not-allowed' : ''}`}
+              disabled={duplicateId}
               onClick={async () => {
+                if (duplicateId) {
+                  alert('Employee ID already registered.');
+                  return;
+                }
                 if (!traineeTeam || !traineeId || !traineeName) {
                   alert("Please enter the trainee's team, ID, and name.");
                   return;
