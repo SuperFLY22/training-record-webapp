@@ -153,7 +153,7 @@ export default function Home() {
 >('main');
   const [showAdminAuth, setShowAdminAuth] = useState(false);
   const [adminCode, setAdminCode] = useState('');
-  const ADMIN_PASSWORD = '1234';
+  const ADMIN_PASSWORD = '0990';
 
   const [showInstructorAuth, setShowInstructorAuth] = useState(false);
   const [instructorCode, setInstructorCode] = useState('');
